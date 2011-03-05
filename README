@@ -1,3 +1,49 @@
 Akt - small and flexible deployment tool written in php.
 
-Thanks to Rasmus Lerdorf and WePay team for WePloy and its some interesting ideas.
+aktfile sample:
+
+$buildDir = '/home/build/production/';
+$devDir = '/home/dev/site/';
+
+function task_default()
+{
+    depends('clean', 'copySource');
+
+    task('minify', array('path' => $buildDir));
+
+    $production = new Connection('ssh', array(
+        'host' => 'production.com',
+        'username' => 'root'
+    ));
+
+    $production->sync('/home/site/', $buildDir);
+}
+
+function task_clean()
+{
+    dir::recreate($buildDir);
+}
+
+function task_copySource()
+{
+    $source = new Fileset($devDir);
+    $source->include('**');
+    $source->exclude('**/.git/**');
+    $source->copy($buildDir);
+}
+
+class MinifyTask extends Akt_Task
+{
+    public function execute()
+    {
+        // Minify operations here...
+        $phpFiles = new Fileset($buildDir);
+        $phpFiles->include('**/*.php');
+        task('strip_php_comments', $phpFiles);
+    }
+}
+
+
+Thanks to:
+    - Rasmus Lerdorf and Zend team for PHP
+    - WePay team for WePloy and its some interesting ideas
