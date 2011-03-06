@@ -43,8 +43,7 @@ class Akt_Client_Console_ConsoleClient extends Akt_Client_AbstractClient
         else {
             if (file_exists('aktfile.php')) {
                 include_once 'aktfile.php';
-                $task = new DefaultTask();
-                $task->execute();
+                task('default');
             }
         }
     }

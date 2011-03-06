@@ -9,23 +9,23 @@ ini_set('display_errors', 1);
 /* ==============================
      Set required include paths
 // ============================== */
-$aktIncludePath = array();
+$includePath = array();
 foreach (explode(PATH_SEPARATOR, get_include_path()) as $path) {
     if ($path != '.' && ($path = realpath($path))) {
-        $aktIncludePath[] = $path;
+        $includePath[] = $path;
     }
 }
-$aktIncludePath = array_unique(
+$includePath = array_unique(
     array_merge(
         array(
             getcwd(),
             dirname(__FILE__),
             realpath(dirname(__FILE__) . '/vendors'),
         ),
-        $aktIncludePath
+        $includePath
     )
 );
-set_include_path(implode(PATH_SEPARATOR, $aktIncludePath));
+set_include_path(implode(PATH_SEPARATOR, $includePath));
 
 /* ==========================================================
      Create Akt Autoloader and register it by instantiating
@@ -59,6 +59,71 @@ class Akt
         $client = new $className($options);
         return $client->dispatch();
     }
+
+    /**
+     * Check is task exists
+     *
+     * @param string $taskName
+     * @return bool
+     */
+    public static function taskExists($taskName)
+    {
+        $functionName = 'task_' . $taskName;
+        if (function_exists($functionName)) {
+            return true;
+        }
+
+        $className = self::formatTaskClassName($taskName);
+        if (class_exists($className, false)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Loads task by its name
+     *
+     * @param string $taskName
+     * @return void
+     */
+    public static function loadTask($taskName)
+    {
+        if (self::taskExists($taskName)) {
+            return;
+        }
+
+        $path = explode('_', $taskName);
+
+        $taskPath = count($path) > 1 ? implode(DIRECTORY_SEPARATOR, array_slice($path, 0, -1)) : '';
+        $taskFilename = end($path) . '.php';
+
+        $functionName = 'task_' . $taskName;
+        $className = self::formatTaskClassName($taskName);
+
+        $filename = 'tasks' . DIRECTORY_SEPARATOR . $taskPath . DIRECTORY_SEPARATOR . $taskFilename;
+
+        if (file_exists($filename)) {
+            include_once($filename);
+        }
+
+        if (self::taskExists($taskName)) {
+            return;
+        }
+
+        throw new Akt_Exception("Task '$taskName' not found");
+    }
+
+    /**
+     * Get task's class name
+     *
+     * @param string $taskName
+     * @return string
+     */
+    public static function formatTaskClassName($taskName)
+    {
+        return str_replace(' ', '_', ucwords(str_replace('_', ' ', $taskName))) . 'Task';
+    }
 }
 
 
@@ -84,29 +149,36 @@ function module($name, $instance = 'default')
 /**
  * Execute task by its name
  *
- * @param string $name
+ * @param string $taskName
  * @param array $params
  * @return mixed
  */
-function task($name, $params = array())
+function task($taskName, $params = array())
 {
-    $taskfunc = 'task_' . $name;
-    $taskClass = ucfirst($name) . 'Task';
+    $taskFunction = 'task_' . $taskName;
+    $taskClassName = Akt::formatTaskClassName($taskName);
 
-    if (!function_exists($taskfunc) && !class_exists($taskClass, false)) {
-        // load task file
-    }
+    Akt::loadTask($taskName);
     
-    if (function_exists($taskfunc)) {
-        return call_user_func_array($taskfunc, $params);
+    if (function_exists($taskFunction))
+    {
+        if (Akt_Helper_Array::hasStringKey($params)) {
+            $params = array($params);
+        }
+        return call_user_func_array($taskFunction, $params);
     }
-    elseif (class_exists($taskClass, false)) {
-        $class = new $taskClass();
-        //$class->setOptions($params);
+    elseif (class_exists($taskClassName, false))
+    {
+        $class = new $taskClassName();
+        foreach ($params as $key => $value) {
+            if (is_string($key) && property_exists($class, $key)) {
+                $class->$key = $value;
+            }
+        }
         return $class->execute();
     }
 
-    throw new Akt_Exception("Task '$name' not found");
+    return false;
 }
 
 /**
@@ -121,7 +193,7 @@ function task($name, $params = array())
  *     array('taskName', array(param1, param2, ...), true)
  *     or array('taskName', true), if no parameters needed
  * In this case this is the same as task() function calling,
- * but useful on multiple task depending:
+ * but may be useful on multiple task depending:
  *     depends('task1', array('task2', true), 'task3');
  *       instead of
  *     depends('task1');
