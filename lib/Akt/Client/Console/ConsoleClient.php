@@ -11,11 +11,6 @@ class Akt_Client_Console_ConsoleClient extends Akt_Client_AbstractClient
     protected $_request;
 
     /**
-     * @var Akt_Client_Console_Response
-     */
-    protected $_response;
-
-    /**
      * @var string
      */
     protected $_defaultTask = 'default';
@@ -36,29 +31,12 @@ class Akt_Client_Console_ConsoleClient extends Akt_Client_AbstractClient
      */
     public function dispatch()
     {
-        fwrite(STDOUT, "Welcome to Akt\n\n");
-        if ($this->getRequest()->isInteractive()) {
-            $this->interactiveLoop();
+        if (file_exists('aktfile.php')) {
+            include_once 'aktfile.php';
         }
-        else {
-            if (file_exists('aktfile.php')) {
-                include_once 'aktfile.php';
-                task('default');
-            }
-        }
-    }
-
-    /**
-     *
-     */
-    public function interactiveLoop()
-    {
-        do {
-            fwrite(STDOUT, "\nakt> ");
-            $command = trim(fgets(STDIN));
-            fwrite(STDOUT, $command . "\n");
-        }
-        while ($command != 'quit');
+        $taskName = ($taskName = $this->getRequest()->getTask()) ? $taskName : $this->_defaultTask;
+        Akt::loadTask($taskName);
+        task($taskName);
     }
 
     /**

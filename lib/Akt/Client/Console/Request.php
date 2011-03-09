@@ -11,7 +11,7 @@ class Akt_Client_Console_Request
     protected $_args = array();
 
     /**
-     * @var Zend_Console_Getopt
+     * @var Akt_Client_Console_Getopt
      */
     protected $_getopt;
 
@@ -33,6 +33,15 @@ class Akt_Client_Console_Request
     }
 
     /**
+     * @return string
+     */
+    public function getTask()
+    {
+        $arguments = $this->getopt()->getRemainingArgs();
+        return count($arguments) ? array_shift($arguments) : null;
+    }
+
+    /**
      * @return bool
      */
     public function isInteractive()
@@ -41,7 +50,7 @@ class Akt_Client_Console_Request
     }
 
     /**
-     * @return Zend_Console_Getopt
+     * @return Akt_Client_Console_Getopt
      */
     public function getopt()
     {

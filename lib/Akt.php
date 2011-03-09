@@ -188,7 +188,7 @@ function task($taskName, $params = array())
  *   array('taskName', array(param1, param2, ...))
  *
  * You can also specify bool parameter 'force' in "task array",
- * which means that task must be run even if it has been already executed
+ * which means that task must be run even if it has been already executed.
  * By default this parameter is false:
  *     array('taskName', array(param1, param2, ...), true)
  *     or array('taskName', true), if no parameters needed
@@ -320,6 +320,7 @@ function registerClassAlias($alias)
             throw new Akt_Exception("Class '$className' not found");
         }
 
+        // @todo: class_alias() for php >= 5.3.0
         eval("class $classAlias extends $className {}");
     }
 }
