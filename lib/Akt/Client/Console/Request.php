@@ -42,6 +42,15 @@ class Akt_Client_Console_Request
     }
 
     /**
+     * @return string
+     */
+    public function getTaskArguments()
+    {
+        $arguments = $this->getopt()->getRemainingArgs();
+        return count($arguments) > 1 ? array_slice($arguments, 1) : array();
+    }
+
+    /**
      * @return bool
      */
     public function isInteractive()

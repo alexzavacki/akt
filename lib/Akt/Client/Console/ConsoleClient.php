@@ -36,7 +36,8 @@ class Akt_Client_Console_ConsoleClient extends Akt_Client_AbstractClient
         }
         $taskName = ($taskName = $this->getRequest()->getTask()) ? $taskName : $this->_defaultTask;
         Akt::loadTask($taskName);
-        task($taskName);
+        $arguments = $this->getRequest()->getTaskArguments();
+        task($taskName, $arguments);
     }
 
     /**

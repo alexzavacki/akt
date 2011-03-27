@@ -4,7 +4,8 @@
      Set errors output settings
 // ============================== */
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', 0);
+ini_set('display_startup_errors', 0);
 
 /* ==============================
      Set required include paths
@@ -127,10 +128,6 @@ class Akt
 }
 
 
-/* =====================================================
-     Global functions (mostly aliases for Akt methods)
-// ===================================================== */
-
 /**
  * Loads module by its name and instantiate it
  *
@@ -170,12 +167,7 @@ function task($taskName, $params = array())
     elseif (class_exists($taskClassName, false))
     {
         $class = new $taskClassName();
-        foreach ($params as $key => $value) {
-            if (is_string($key) && property_exists($class, $key)) {
-                $class->$key = $value;
-            }
-        }
-        return $class->execute();
+        return $class->execute($params);
     }
 
     return false;
@@ -261,10 +253,11 @@ function depends()
  *
  * There are some default Akt aliases:
  * 
- *   Config -> Akt_Config
- *   path   -> Akt_Helper_Filesystem_Path
- *   dir    -> Akt_Helper_Filesystem_Dir
- *   file   -> Akt_Helper_Filesystem_File
+ *   Config     -> Akt_Config
+ *   Connection -> Akt_Connection_Connection
+ *   path       -> Akt_Helper_Filesystem_Path
+ *   dir        -> Akt_Helper_Filesystem_Dir
+ *   file       -> Akt_Helper_Filesystem_File
  *
  * @param string|array $alias
  * @return void
@@ -280,6 +273,7 @@ function registerClassAlias($alias)
 
     $aktClassesMap = array(
         'Config' => 'Akt_Config',
+        'Connection' => 'Akt_Connection_Connection',
         'path' => 'Akt_Helper_Filesystem_Path',
         'dir'  => 'Akt_Helper_Filesystem_Dir',
         'file' => 'Akt_Helper_Filesystem_File',

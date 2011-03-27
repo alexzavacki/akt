@@ -11,16 +11,16 @@ And here is another one...
 ## Let's look for existing solutions
 
 I have tried some of similar tools:  
-* Ant - _Great_, _Powerful_, _Popular_ = **Awesome**. _Java_, _XML_ = **Awful** (for me)  
-* Phing - Ant clone in php, therefore we have the same xml syntax  
-* Make - no comments  
-* Rake - this is in ruby...  
-* Capistrano - this is in ruby...  
-* Fabric - this is in python...  
+_Ant_ - great, powerful, popular, but java and xml
+_Phing_ - ant clone in php, therefore we have the same xml syntax  
+_Make_ - no comments  
+_Rake_ - this is in ruby...  
+_Capistrano_ - this is in ruby...  
+_Fabric_ - this is in python...  
 
 ## And what we have in php with php syntax?
 
-I don't realy know. Yeah, i have reviewed pake, weploy, phpdeploy and more more more  
+I don't realy know. Yeah, i have reviewed pake, phake, weploy, phpdeploy and more more more  
 Good tools, good job guys. But this is not what I realy need.  
 
 So this is my attempt to make perfect php automatization tool... :)  
