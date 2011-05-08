@@ -50,8 +50,7 @@ class Akt
      */
     public static function run($client, $options = null)
     {
-        $clientName = ucfirst($client);
-        $className = 'Akt_Client_' . $clientName . '_' . $clientName . 'Client';
+        $className = self::formatClientClassName($client);
 
         if (!class_exists($className)) {
             throw new Akt_Exception("Akt client '$client' not found");
@@ -96,13 +95,15 @@ class Akt
 
         $path = explode('_', $taskName);
 
-        $taskPath = count($path) > 1 ? implode(DIRECTORY_SEPARATOR, array_slice($path, 0, -1)) : '';
+        $taskPath = count($path) > 1 
+            ? implode(DIRECTORY_SEPARATOR, array_slice($path, 0, -1)) 
+            : '';
         $taskFilename = end($path) . '.php';
 
         $functionName = 'task_' . $taskName;
         $className = self::formatTaskClassName($taskName);
 
-        $filename = 'tasks' . DIRECTORY_SEPARATOR . $taskPath . DIRECTORY_SEPARATOR . $taskFilename;
+        $filename = implode(DIRECTORY_SEPARATOR, array('tasks', $taskPath, $taskFilename));
 
         if (file_exists($filename)) {
             include_once($filename);
@@ -113,6 +114,18 @@ class Akt
         }
 
         throw new Akt_Exception("Task '$taskName' not found");
+    }
+
+    /**
+     * Get client's class name
+     *
+     * @param string $clientName
+     * @return string
+     */
+    public static function formatClientClassName($clientName)
+    {
+        $clientName = ucfirst($clientName);
+        return 'Akt_Client_' . $clientName . '_' . $clientName . 'Client';
     }
 
     /**
@@ -249,43 +262,42 @@ function depends()
 }
 
 /**
- * Register an alias for long class name
- *
- * There are some default Akt aliases:
- * 
- *   Config     -> Akt_Config
- *   Connection -> Akt_Connection_Connection
- *   path       -> Akt_Helper_Filesystem_Path
- *   dir        -> Akt_Helper_Filesystem_Dir
- *   file       -> Akt_Helper_Filesystem_File
- *
+ * Register an alias of long class name
+
  * @param string|array $alias
  * @return void
  */
 function registerClassAlias($alias)
 {
-    if (is_string($alias)) {
-        $alias = array($alias);
-    }
-    elseif (!is_array($alias)) {
-        throw new Akt_Exception("Alias must be a string or an array");
+    $aliases = array();
+
+    foreach (func_get_args() as $alias) {
+        if (is_string($alias)) {
+            $alias = array($alias);
+        }
+        elseif (!is_array($alias)) {
+            throw new Akt_Exception("Alias must be a string or an array");
+        }
+        $aliases = array_merge($aliases, $alias);
     }
 
     $aktClassesMap = array(
         'Config' => 'Akt_Config',
+        'path' => 'Akt_Filesystem_Path',
+        'dir'  => 'Akt_Filesystem_Dir',
+        'file' => 'Akt_Filesystem_File',
+        'DirList' => 'Akt_Filesystem_List_DirList',
+        'FileList' => 'Akt_Filesystem_List_FileList',
+        'FilePack' => 'Akt_Filesystem_List_FilePack',
         'Connection' => 'Akt_Connection_Connection',
-        'path' => 'Akt_Helper_Filesystem_Path',
-        'dir'  => 'Akt_Helper_Filesystem_Dir',
-        'file' => 'Akt_Helper_Filesystem_File',
     );
 
-    // array_change_key_case($array, CASE_LOWER);
     $aktClassesMapLowerKeys = array_combine(
-        array_map('strtolower', array_keys($aktClassesMap)),
+        array_keys(array_change_key_case($aktClassesMap, CASE_LOWER)),
         array_keys($aktClassesMap)
     );
 
-    foreach ($alias as $classAlias => $className)
+    foreach ($aliases as $classAlias => $className)
     {
         if (!is_string($className)) {
             throw new Akt_Exception('Class name must be a string');
@@ -314,7 +326,25 @@ function registerClassAlias($alias)
             throw new Akt_Exception("Class '$className' not found");
         }
 
-        // @todo: class_alias() for php >= 5.3.0
-        eval("class $classAlias extends $className {}");
+        if (version_compare(PHP_VERSION, '5.3.0', '<')) {
+            eval("class $classAlias extends $className {}");
+        }
+        else {
+            class_alias($className, $classAlias);
+        }
     }
+}
+
+/**
+ * Check if $path is "stream wrapped"
+ * 
+ * Returns true if $path contains wrapper's protocol part
+ * and this stream wrapper is registered
+ *
+ * @param string $path
+ * @return bool 
+ */
+function isStreamWrappedPath($path)
+{
+    return Akt_Filesystem_Path::isStreamWrapped($path);
 }

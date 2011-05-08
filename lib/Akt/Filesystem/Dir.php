@@ -1,12 +1,12 @@
 <?php
 
 /** We need path functions */
-require_once 'Akt/Helper/Filesystem/Path.php';
+require_once 'Akt/Filesystem/Path.php';
 
 /**
  *
  */
-class Akt_Helper_Filesystem_Dir
+class Akt_Filesystem_Dir
 {
     /**
      * Create directory
@@ -17,7 +17,7 @@ class Akt_Helper_Filesystem_Dir
      */
     public static function create($path, $chmod = 0777)
     {
-        $path = Akt_Helper_Filesystem_Path::realize($path);
+        $path = Akt_Filesystem_Path::realize($path);
 
         if (self::exists($path)) {
             return true;
@@ -56,7 +56,7 @@ class Akt_Helper_Filesystem_Dir
     }
 
     /**
-     * Check if path exists and it's a directory
+     * Check if dir exists
      *
      * @param string $path
      * @return bool
@@ -103,7 +103,7 @@ class Akt_Helper_Filesystem_Dir
     }
 
     /**
-     * Checks if directory is empty
+     * Check if directory is empty
      *
      * @param string $path
      * @return bool
@@ -113,7 +113,7 @@ class Akt_Helper_Filesystem_Dir
         $path = realpath($path);
 
         if (!is_dir($path)) {
-            throw new Exception("Directory doesn't exist");
+            throw new Exception("Directory '$path' doesn't exist");
         }
 
         $files = @scandir($path);

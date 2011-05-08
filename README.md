@@ -11,7 +11,7 @@ And here is another one...
 ## Let's look for existing solutions
 
 I have tried some of similar tools:  
-_Ant_ - great, powerful, popular, but java and xml
+_Ant_ - great, powerful, popular, but java and xml  
 _Phing_ - ant clone in php, therefore we have the same xml syntax  
 _Make_ - no comments  
 _Rake_ - this is in ruby...  
@@ -20,8 +20,8 @@ _Fabric_ - this is in python...
 
 ## And what we have in php with php syntax?
 
-I don't realy know. Yeah, i have reviewed pake, phake, weploy, phpdeploy and more more more  
-Good tools, good job guys. But this is not what I realy need.  
+I don't really know. Yeah, i have reviewed pake, phake, weploy, phpdeploy and more more more  
+Good tools, good job guys. But this is not what I really need.  
 
 So this is my attempt to make perfect php automatization tool... :)  
 _Let's go!_

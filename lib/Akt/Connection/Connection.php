@@ -1,5 +1,9 @@
 <?php
 
+/**
+ * Replace ConnectionHandle with Session
+ */
+
 class Akt_Connection_Connection
 {
     /**
@@ -83,7 +87,7 @@ class Akt_Connection_Connection
             }
         }
 
-        throw new Akt_Exception("Method ::{$method}() not found");
+        throw new Akt_Exception("Method " . __CLASS__ . "::{$method}() not found");
     }
 
     /**

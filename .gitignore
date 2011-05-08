@@ -8,6 +8,7 @@ nbproject/
 .settings/
 .cache
 .project
+.buildpath
 .idea
 
 # SCM
