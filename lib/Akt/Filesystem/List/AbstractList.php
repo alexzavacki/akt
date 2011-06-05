@@ -18,6 +18,14 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     const DIRS_AND_FILES = 0;
     const FILES_ONLY     = 1;
     const DIRS_ONLY      = 2;
+    
+    /**
+     * @const List options
+     */
+    const EXISTING = 1;
+    
+    const ABSOLUTE = 0;
+    const RELATIVE = 2;
 
     /**
      * List's base dir
@@ -45,9 +53,9 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     
     /**
      * List options
-     * @var array 
+     * @var Akt_Options 
      */
-    protected $_options = array();
+    protected $_options;
 
 
     /**
@@ -76,7 +84,7 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
             $options = $excludeOrOptions;
         }
         else {
-            throw new Akt_Exception("Bad parameter");
+            throw new Akt_Exception("Bad parameters");
         }
         
         if ($basedir === null) {
@@ -88,22 +96,39 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
         
         $this->_basedir = $basedir;
         
-        if (is_int($include)) {
+        if (is_int($include) || ($include instanceof Akt_Options)) {
             $options = $include;
             $include = null;
         }
-        elseif (is_int($exclude)) {
+        elseif (is_int($exclude) || ($exclude instanceof Akt_Options)) {
             $options = $exclude;
             $exclude = null;
         }
         
-        /**
-         * $options = array(
-         *      'existing' => true|false,
-         *      'relative' => true|false,
-         * )
-         */
-        $this->_options = $options;
+        if ($options instanceof Akt_Options) {
+            $this->_options = $options;
+        }
+        else 
+        {
+            if (is_int($options)) 
+            {
+                $flags = $options;
+                $options = array();
+                $flagmap = array(
+                    'existing' => self::EXISTING,
+                    'relative' => self::RELATIVE,
+                );
+                foreach ($flagmap as $flagKey => $flagValue) {
+                    if (($flags & $flagValue) == $flagValue) {
+                        $options[$flagKey] = true;
+                    }
+                }
+            }
+            elseif (!is_array($options)) {
+                $options = array();
+            }
+            $this->setOptions(new Akt_Options($options));
+        }
         
         if (is_array($include)) {
             $this->_include = array_merge($this->_include, $include);
@@ -123,6 +148,16 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
      */
     public function getIterator()
     {
+        /*
+        $includes = $this->getAllIncludes();
+        if (noscan($includes)) {
+            $iterator = new ArrayIterator($includes);
+            if ($this->options()->get('existing', false)) {
+                $iterator = new ExistingIterator($iterator);
+            }
+        }
+        */
+        
         $iterator = new AppendIterator();
         
         $basedir = is_string($this->_basedir) ? $this->_basedir : getcwd();
@@ -130,7 +165,7 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
         
         return $iterator;
     }
-
+    
     /**
      * Get iterators chain for specified directory
      *
@@ -215,36 +250,6 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     }
     
     /**
-     *
-     * @return Akt_Filesystem_List_AbstractList 
-     */
-    public function absolute()
-    {
-        // not implemented (by default)
-        return $this;
-    }
-    
-    /**
-     *
-     * @return Akt_Filesystem_List_AbstractList 
-     */
-    public function relative()
-    {
-        // not implemented
-        return $this;
-    }
-    
-    /**
-     *
-     * @return Akt_Filesystem_List_AbstractList 
-     */
-    public function existing()
-    {
-        // not implemented
-        return $this;
-    }
-
-    /**
      * Create and return new list filter
      *
      * @return Akt_Filesystem_List_ListFilter 
@@ -284,18 +289,6 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     public function getMode()
     {
         return $this->_mode;
-    }
-
-    /**
-     * Set list mode
-     *
-     * @param int $mode
-     * @return Akt_Filesystem_List_AbstractList 
-     */
-    public function setMode($mode)
-    {
-        $this->_mode = $mode;
-        return $this;
     }
 
     /**
@@ -403,25 +396,58 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     }
 
     /**
-     * Get current options
+     * Get options adapter
      *
-     * @return array
+     * @return Akt_Options
      */
-    public function getOptions()
+    public function options()
     {
+        if (!$this->_options instanceof Akt_Options) {
+            $this->_options = new Akt_Options();
+        }
         return $this->_options;
     }
-
+    
     /**
-     * Set options
+     * Set options adapter
      *
-     * @param int|array $options
-     * @return Akt_Filesystem_List_AbstractList 
+     * @param Akt_Options $options
+     * @return Akt_Filesystem_List_FilePack 
      */
-    public function setOptions($options)
+    public function setOptions($options)     
     {
+        if (!$options instanceof Akt_Options) {
+            throw new Akt_Exception('Options must be an instance of Akt_Options');
+        }
         $this->_options = $options;
         return $this;
     }
 
+    /**
+     * @return Akt_Filesystem_List_AbstractList 
+     */
+    public function absolute()
+    {
+        $this->options()->set('relative', false);
+        return $this;
+    }
+    
+    /**
+     * @return Akt_Filesystem_List_AbstractList 
+     */
+    public function relative()
+    {
+        $this->options()->set('relative', true);
+        return $this;
+    }
+    
+    /**
+     * @param bool $value
+     * @return Akt_Filesystem_List_AbstractList 
+     */
+    public function existing($value = true)
+    {
+        $this->options()->set('existing', (bool) $value);
+        return $this;
+    }
 }

@@ -21,7 +21,7 @@ $includePath = array_unique(
         array(
             getcwd(),
             dirname(__FILE__),
-            realpath(dirname(__FILE__) . '/vendors'),
+            realpath(dirname(__FILE__) . DIRECTORY_SEPARATOR . 'vendors'),
         ),
         $includePath
     )
@@ -42,6 +42,13 @@ Akt_Loader_Autoloader::getInstance();
 class Akt
 {
     /**
+     * Current client instance
+     * @var Akt_Client_AbstractClient 
+     */
+    protected static $_client;
+    
+    
+    /**
      * Run Akt tool
      *
      * @param string $client
@@ -55,11 +62,28 @@ class Akt
         if (!class_exists($className)) {
             throw new Akt_Exception("Akt client '$client' not found");
         }
+        
+        registerClassAlias(
+            'Config', 'Registry',
+            'Path', 'Dir', 'File',
+            'FileList', 'DirList', 'FilePack',
+            'Connection'
+        );
 
-        $client = new $className($options);
-        return $client->dispatch();
+        self::$_client = new $className($options);
+        return self::$_client->dispatch();
     }
-
+    
+    /**
+     * Get current client instance
+     *
+     * @return Akt_Client_AbstractClient 
+     */
+    public static function getClient()
+    {
+        return self::$_client;
+    }
+    
     /**
      * Check is task exists
      *
@@ -262,6 +286,39 @@ function depends()
 }
 
 /**
+ * Get log instance
+ *
+ * @return Akt_Log 
+ */
+function getLog()
+{
+    return Akt_Log::getInstance();
+}
+
+/**
+ * Add include path
+ *
+ * @param string $path 
+ * @return void
+ */
+function addIncludePath($path)
+{
+    if (is_string($path)) {
+        $path = array($path);
+    }
+    elseif (!is_array($path)) {
+        throw new Akt_Exception("Include path must be a string or an array");
+    }
+    
+    $currentIncludePath = explode(PATH_SEPARATOR, get_include_path());
+    $path = array_diff(array_filter(array_map('realpath', $path)), $currentIncludePath);
+    
+    if ($path) {
+        set_include_path(implode(PATH_SEPARATOR, array_merge($currentIncludePath, $path)));
+    }
+}
+
+/**
  * Register an alias of long class name
 
  * @param string|array $alias
@@ -283,6 +340,7 @@ function registerClassAlias($alias)
 
     $aktClassesMap = array(
         'Config' => 'Akt_Config',
+        'Registry' => 'Akt_Registry',
         'path' => 'Akt_Filesystem_Path',
         'dir'  => 'Akt_Filesystem_Dir',
         'file' => 'Akt_Filesystem_File',

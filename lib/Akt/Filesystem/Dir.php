@@ -48,7 +48,7 @@ class Akt_Filesystem_Dir
 
         if (is_dir($path)) {
             if (!self::remove($path) || is_dir($path)) {
-                throw new Exception("Error occurred during the removing of the directory {$path}");
+                throw new Exception("Error occurred while removing dir {$path}");
             }
         }
 
@@ -88,12 +88,12 @@ class Akt_Filesystem_Dir
             foreach (scandir($path) as $entry)
             {
                 if ($entry != '.' && $entry != '..') {
-                    $path = $path . '/' . $entry;
-                    if (is_dir($path)) {
-                        self::remove($path);
+                    $fullpath = $path . DIRECTORY_SEPARATOR . $entry;
+                    if (is_dir($fullpath)) {
+                        self::remove($fullpath);
                     }
-                    elseif (is_file($path)) {
-                        unlink($path);
+                    elseif (is_file($fullpath)) {
+                        unlink($fullpath);
                     }
                 }
             }

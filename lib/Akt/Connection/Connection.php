@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Replace ConnectionHandle with Session
+ * @todo: Replace ConnectionHandle with Session
  */
 
 class Akt_Connection_Connection

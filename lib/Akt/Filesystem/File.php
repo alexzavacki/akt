@@ -137,7 +137,7 @@ class Akt_Filesystem_File
             throw new Exception("File '{$path}' not found or could not be read");
         }
 
-        $content = intval($len) == $len
+        $content = $len !== null
             ? @file_get_contents($path, true, null, $offset, $len)
             : @file_get_contents($path, true, null, $offset);
 
@@ -150,21 +150,25 @@ class Akt_Filesystem_File
      * @param string $path
      * @param string $data
      * @param string $mode
-     * @return bool
+     * @return int|false
      */
     public static function write($path, $data, $mode = 'w')
     {
         $path = Akt_Filesystem_Path::clean($path);
+        $dir = dirname($path);
+        
+        if (!is_dir($dir)) {
+            Akt_Filesystem_Dir::create($dir);
+        }
 
         if (($handle = fopen($path, $mode)) === false) {
             return false;
         }
-        if (fwrite($handle, $data) === false) {
-            return false;
-        }
-
+        
+        $result = fwrite($handle, $data);
         fclose($handle);
-        return true;
+        
+        return $result;
     }
 
     /**
@@ -172,7 +176,7 @@ class Akt_Filesystem_File
      *
      * @param string $path
      * @param string $data
-     * @return bool
+     * @return int|false
      */
     public static function append($path, $data)
     {

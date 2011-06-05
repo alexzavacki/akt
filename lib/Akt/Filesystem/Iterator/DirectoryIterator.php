@@ -48,6 +48,12 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      */
     protected $_useReopen = null;
     
+    /**
+     * Directory separator for current path
+     * @var string
+     */
+    protected $_directorySeparator;
+    
     
     /**
      * Constructor.
@@ -88,6 +94,8 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      */
     protected function _open($path = null)
     {
+        $dirsep = $this->getDirectorySeparator($path);
+        
         if ($path === null) {
             $path = $this->_path;
         }
@@ -96,7 +104,7 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
             throw new Akt_Exception("Path must be a string");
         }
         
-        $path = rtrim($path, "/\\") . $this->getDirectorySeparator($path);
+        $path = rtrim($path, "/\\") . $dirsep;
         
         if (!is_dir($path)) {
             throw new Akt_Exception("Path '{$path}' is not directory");
@@ -285,19 +293,33 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      */
     public function getDirectorySeparator($path = null)
     {
-        if ($path === null) {
+        $isIteratorPath = $path === null;
+        
+        if ($isIteratorPath) {
+            if (is_string($this->_directorySeparator)) {
+                return $this->_directorySeparator;
+            }            
             $path = $this->_path;
         }
+        
         if (Akt_Filesystem_Path::isStreamWrapped($path)) {
-            return '/';
+            $dirsep = '/';
         }
-        if (Akt_Filesystem_Path::isUnc($path)) {
-            return $this->hasFlag(self::UNIX_PATHS) ? '/' : '\\';
+        elseif (Akt_Filesystem_Path::isUnc($path)) {
+            $dirsep = $this->hasFlag(self::UNIX_PATHS) ? '/' : '\\';
         }
-        if (strstr(PHP_OS, 'WIN') && !$this->hasFlag(self::UNIX_PATHS)) {
-            return "\\";
+        elseif (strstr(PHP_OS, 'WIN') && !$this->hasFlag(self::UNIX_PATHS)) {
+            $dirsep = "\\";
         }
-        return '/';
+        else {
+            $dirsep = "/";
+        }
+        
+        if ($isIteratorPath) {
+            $this->_directorySeparator = $dirsep;
+        }
+        
+        return $dirsep;
     }
     
     /**

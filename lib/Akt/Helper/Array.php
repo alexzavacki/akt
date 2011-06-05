@@ -6,7 +6,7 @@
 class Akt_Helper_Array
 {
     /**
-     * Check if array contains at least one value with non-numeric key
+     * Check if array contains at least one not numeric key
      *
      * @param array $array
      * @return bool
@@ -14,7 +14,7 @@ class Akt_Helper_Array
     public static function hasStringKey($array)
     {
         foreach ($array as $key => $value) {
-            if (intval($key) != $key) {
+            if (!ctype_digit((string) $key)) {
                 return true;
             }
         }
@@ -31,7 +31,7 @@ class Akt_Helper_Array
     {
         $flatted = array();
         
-        // iterator_to_array() doesn't work properly with recursive iterators
+        // iterator_to_array() doesn't work properly for recursive iterators
         $it = new RecursiveIteratorIterator(new RecursiveArrayIterator($array));
         foreach ($it as $value) {
             $flatted[] = $value;

@@ -18,11 +18,21 @@ class Akt_Filesystem_Path
      *
      * Triming whitespaces
      * Removing double slashes
-     * Converting all slashes to os-specific directory separators:
-     *   '\' - for Windows
-     *   '/' - for Unix-systems and Mac
-     *
+     * 
+     * Slashes converting depends on $separator and path type
+     * 
+     * 1. If $path is stream wrapped, all slash-chars converting to forward slashes '/'
+     * 2. If $path is UNC-path, slash type depends on $separator:
+     *      if $separator is DIRSEP_UNIX, slash type is forward slash, 
+     *      in all other cases - backslash '\'
+     * 3. Else $path is local and directory separator depends only on $separator:
+     *      if $separator is integer and equals to one of DIRSEP constants 
+     *          appropriate separator is using
+     *      if $separator is string, this string is using as directory separator
+     *      in all other cases os-specific DIRECTORY_SEPARATOR constant is using
+     * 
      * @param string $path
+     * @param string|int|null $separator
      * @return string
      */
     public static function clean($path, $separator = null)
