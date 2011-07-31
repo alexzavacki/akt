@@ -1,8 +1,5 @@
 <?php
 
-/** We need path functions */
-require_once 'Akt/Filesystem/Path.php';
-
 /**
  *
  */
@@ -69,7 +66,8 @@ class Akt_Filesystem_Dir
     /**
      * Remove the directory
      *
-     * @param string $path
+     * @param  string $path
+     * @param  bool $recursive
      * @return bool
      */
     public static function remove($path, $recursive = true)

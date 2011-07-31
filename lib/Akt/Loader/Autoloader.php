@@ -1,7 +1,8 @@
 <?php
 
-/** We need default Loader */
-require_once 'Akt/Loader/Loader.php';
+/** We need default internal and ClassAlias loaders */
+require_once dirname(__FILE__) . '/Loader.php';
+require_once dirname(__FILE__) . '/ClassAliasLoader.php';
 
 /**
  *
@@ -10,7 +11,7 @@ class Akt_Loader_Autoloader
 {
     /**
      * Autoloader instance
-     * @var Akt_Autoloader
+     * @var Akt_Loader_Autoloader
      */
     protected static $_instance;
 
@@ -22,6 +23,7 @@ class Akt_Loader_Autoloader
 
     /**
      * Required autoloaders for properly work
+     * They will be called before registered (can be used for vendor scripts loading)
      * @var array
      */
     protected $_requiredAutoloaders = array();
@@ -32,11 +34,17 @@ class Akt_Loader_Autoloader
      */
     protected $_registeredAutoloaders = array();
 
+    /**
+     * Aliases loader
+     * @var array
+     */
+    protected $_classAliasAutoloader = array('Akt_Loader_ClassAliasLoader', 'load');
+
 
     /**
      * Get autoloader instance
      *
-     * @return Akt_Autoloader
+     * @return Akt_Loader_Autoloader
      */
     public static function getInstance()
     {
@@ -58,7 +66,7 @@ class Akt_Loader_Autoloader
 
     /**
      * Constructor
-     * Registers own static method "autoload" as SPL autoload callback
+     * Register own static method "autoload" as SPL autoload callback
      */
     protected function __construct()
     {
@@ -67,7 +75,7 @@ class Akt_Loader_Autoloader
 
     /**
      * Destructor
-     * Removes own autoload method from SPL autoload stack
+     * Remove own autoload method from SPL autoload stack
      */
     public function  __destruct()
     {
@@ -86,6 +94,7 @@ class Akt_Loader_Autoloader
             return true;
         }
 
+        /** @var array|Akt_Loader_LoaderInterface|string $autoloader */
         foreach (self::getInstance()->getAutoloaders() as $autoloader)
         {
             if (is_array($autoloader))
@@ -97,7 +106,7 @@ class Akt_Loader_Autoloader
                 }
             }
             elseif (is_object($autoloader)) {
-                if ($autoloader->autoload($class)) {
+                if ($autoloader->load($class)) {
                     return true;
                 }
             }
@@ -121,7 +130,8 @@ class Akt_Loader_Autoloader
         return array_merge(
             array($this->_internalAutoloader),
             $this->_requiredAutoloaders,
-            $this->_registeredAutoloaders
+            $this->_registeredAutoloaders,
+            array($this->_classAliasAutoloader)
         );
     }
 
@@ -139,7 +149,7 @@ class Akt_Loader_Autoloader
      * Unshift autoloader callback
      *
      * @param  object|array|string $callback
-     * @return Akt_Autoloader
+     * @return Akt_Loader_Autoloader
      */
     public function unshiftAutoloader($callback)
     {
@@ -161,7 +171,7 @@ class Akt_Loader_Autoloader
      * Push autoloader callback
      *
      * @param  object|array|string $callback
-     * @return Akt_Autoloader
+     * @return Akt_Loader_Autoloader
      */
     public function pushAutoloader($callback)
     {
@@ -183,33 +193,16 @@ class Akt_Loader_Autoloader
      * Remove autoloader callback
      *
      * @param  object|array|string $callback
-     * @return Akt_Autoloader
+     * @return Akt_Loader_Autoloader
      */
     public function removeAutoloader($callback)
     {
         $index = array_search($callback, $this->_registeredAutoloaders, true);
         
         if ($index !== false) {
-            unset($this->_registeredAutoloaders[ $index ]);
+            unset($this->_registeredAutoloaders[$index]);
         }
 
         return $this;
-    }
-
-    /**
-     * Disable Akt short classnames like "dir", "config", etc.
-     *
-     * @param string|array $alias
-     */
-    public static function disableAlias($alias)
-    {
-        if (is_string($alias)) {
-            $alias = array($alias);
-        }
-        elseif (!is_array($alias)) {
-            throw new Akt_Exception('Alias name must be a string or array of strings');
-        }
-
-        // ...
     }
 }

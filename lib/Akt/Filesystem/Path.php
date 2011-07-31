@@ -30,6 +30,13 @@ class Akt_Filesystem_Path
      *          appropriate separator is using
      *      if $separator is string, this string is using as directory separator
      *      in all other cases os-specific DIRECTORY_SEPARATOR constant is using
+     *
+     * @todo On unix it is possible to create directory with backslash char in name, e.g.:
+     *       /home/user/path/fol\der/file,
+     *       but self::clean() unifies path by converting all slash-chars to specified separator,
+     *       so this path will be converted to:
+     *       /home/user/path/fol/der/file,
+     *       and they are not same
      * 
      * @param string $path
      * @param string|int|null $separator
@@ -38,30 +45,18 @@ class Akt_Filesystem_Path
     public static function clean($path, $separator = null)
     {
         $path = trim($path);
+        $dirsep = self::getDirectorySeparator($path, $separator);
         
         if (self::isStreamWrapped($path)) {
-            $protocol = self::getStreamWrapperProtocol($path);
-            $path = $protocol . '://'
+            $scheme = self::getStreamWrapperScheme($path);
+            $path = $scheme . '://'
                 . ltrim(strstr(preg_replace('#[/\\\\]+#', '/', $path), ':/'), ':/');
         }
         elseif (self::isUnc($path)) {
-            $dirsep = $separator === self::DIRSEP_UNIX ? '/' : '\\';
             $path = str_repeat($dirsep, 2) 
                 . ltrim(preg_replace('#[/\\\\]+#', $dirsep, $path), $dirsep);
         }
         else {
-            if ($separator === self::DIRSEP_UNIX) {
-                $dirsep = '/';
-            }
-            elseif ($separator === self::DIRSEP_WIN) {
-                $dirsep = '\\';
-            }
-            elseif (is_string($separator)) {
-                $dirsep = $separator;
-            }
-            else {
-                $dirsep = DIRECTORY_SEPARATOR;
-            }
             $path = preg_replace('#[/\\\\]+#', $dirsep, $path);
         }
         
@@ -73,51 +68,67 @@ class Akt_Filesystem_Path
      * Transforms relative paths like a/b/./c/../d/ to absolute a/b/d/
      *
      * @param string $path
-     * @return string
+     * @param string|int|null $separator
+     * @param bool $expandSymlink
+     * @return string|false
      */
-    public static function realize($path)
+    public static function realize($path, $separator = null, $expandSymlink = false)
     {
-        $path = self::clean($path);
-        $path = preg_replace('#\.{3,}' . preg_quote(DIRECTORY_SEPARATOR) . '#', '', $path);
+        $path = preg_replace('#\.{3,}#', '', $path);
+        $path = self::clean($path, $separator);
 
-        $drive = '';
-        if (strtoupper(substr(PHP_OS, 0, 3)) == 'WIN')
-        {
-            if (preg_match('/([a-zA-Z]\:)(.*)/', $path, $matches)) {
-                list($fullMatch, $drive, $path) = $matches;
-            }
-            else
-            {
-                $cwd = getcwd();
-                $drive = substr($cwd, 0, 2);
-                if (substr($path, 0, 1) != DIRECTORY_SEPARATOR) {
-                    $path = substr($cwd, 3) . DIRECTORY_SEPARATOR . $path;
-                }
+        $dirsep = self::getDirectorySeparator($path, $separator);
+
+        $prefix = '';
+        if (self::isStreamWrapped($path)) {
+            $scheme = self::getStreamWrapperScheme($path);
+            $prefix = $scheme . '://';
+            $path = ltrim(strstr($path, ':/'), ':/');
+            if ($path) {
+                $path = explode($dirsep, $path);
+                $prefix .= array_shift($path) . $dirsep;
             }
         }
-        elseif (substr($path, 0, 1) != DIRECTORY_SEPARATOR) {
-            $path = getcwd() . DIRECTORY_SEPARATOR . $path;
+        elseif (self::isUnc($path)) {
+            $path = explode($dirsep, ltrim($path, $dirsep));
+            $prefix = str_repeat($dirsep, 2) . array_shift($path) . $dirsep;
+        }
+        else {
+            if (self::isAbsoluteWin($path)) {
+                $path = explode($dirsep, $path);
+                $prefix = array_shift($path) . $dirsep;
+            }
+            elseif (self::isAbsoluteUnix($path)) {
+                $path = explode($dirsep, ltrim($path, $dirsep));
+                $prefix = $dirsep;
+            }
+        }
+
+        if (is_string($path)) {
+            $path = explode($dirsep, trim($path, $dirsep));
+        }
+        elseif (!is_array($path)) {
+            return false;
         }
 
         $stack = array();
-        $parts = explode(DIRECTORY_SEPARATOR, $path);
-
-        foreach ($parts as $dir)
+        
+        foreach ($path as $entry)
         {
-            if (strlen($dir) && $dir !== '.')
-            {
-                if ($dir == '..') {
+            $entry = trim($entry);
+            if ($entry && $entry != '.') {
+                if ($entry == '..') {
                     array_pop($stack);
                 }
                 else {
-                    array_push($stack, $dir);
+                    array_push($stack, $entry);
                 }
             }
         }
         
-        $path = $drive . DIRECTORY_SEPARATOR . implode(DIRECTORY_SEPARATOR, $stack);
-        
-        if (file_exists($path) && is_link($path)) {
+        $path = trim($prefix . implode($dirsep, $stack));
+
+        if (strlen($path) && $expandSymlink && file_exists($path) && is_link($path)) {
             $path = readlink($path);
         }
         
@@ -133,21 +144,22 @@ class Akt_Filesystem_Path
      * @param string $path
      * @param bool $left
      * @param bool $right
+     * @param string|int|null $separator
      * @return string
      */
-    public static function slash($path, $left = false, $right = true)
+    public static function slash($path, $left = false, $right = true, $separator = null)
     {
-        $path = self::clean($path);
-
         if ($path == '') {
             return $path;
         }
 
+        $dirsep = self::getDirectorySeparator($path, $separator);
+
         if ($left) {
-            $path = DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
+            $path = $dirsep . ltrim($path, $dirsep);
         }
         if ($right) {
-            $path = rtrim($path, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+            $path = rtrim($path, $dirsep) . $dirsep;
         }
 
         return $path;
@@ -162,82 +174,82 @@ class Akt_Filesystem_Path
      * @param string $path
      * @param bool $left
      * @param bool $right
+     * @param string|int|null $separator
      * @return string
      */
-    public static function unslash($path, $left = false, $right = true)
+    public static function unslash($path, $left = false, $right = true, $separator = null)
     {
-        $path = self::clean($path);
-
         if ($path == '') {
             return $path;
         }
 
+        $dirsep = self::getDirectorySeparator($path, $separator);
+
         if ($left) {
-            $path = ltrim($path, DIRECTORY_SEPARATOR);
+            $path = ltrim($path, $dirsep);
         }
         if ($right) {
-            $path = rtrim($path, DIRECTORY_SEPARATOR);
+            $path = rtrim($path, $dirsep);
         }
 
         return $path;
     }
-    
+
     /**
-     * Check if $path is local and absolute
-     * 
-     * If $os is null, check for current OS
-     * If $os is true or 'all', check for all OS
+     * Get directory separator depending on $path type
      *
-     * @param string $path
-     * @param string $os
-     * @return bool 
+     * 1. Stream wrapped paths - '/'
+     * 2. UNC paths:
+     *    If $separator equals to DIRSEP_UNIX - '/',
+     *    else - '\'
+     * 3. Local paths:
+     *    If $separator equals to DIRSEP_UNIX - '/',
+     *    else if $separator equals to DIRSEP_Win - '\',
+     *    else if $separator is string it will be returned as separator
+     * 4. In all other cases returns os-specific DIRECTORY_SEPARATOR constant
+     *
+     * @static
+     * @param  string $path
+     * @param  string|int|null $separator
+     * @return null|string
      */
-    public static function isAbsoluteLocal($path, $os = null)
+    public static function getDirectorySeparator($path, $separator = null)
     {
-        if ($os !== true && $os != 'all') {
-            if ($os === null) {
-                $os = PHP_OS;
-            }
-            $os = strstr(strtolower($os), 'win') ? 'win' : 'unix';
+        if (self::isStreamWrapped($path)) {
+            return '/';
         }
-        
-        switch ($os)
-        {
-            default:
-            case 'win':
-                $pattern = '#^[a-z]+?:\\\\([^\\\\]|$)#i';
-                if (preg_match($pattern, strtr($path, '/\\', '\\\\'))) {
-                    return true;
-                }
-                if ($os == 'win') {
-                    break;
-                }
-            
-            case 'unix':
-                if (substr($path, 0, 1) == '/') {
-                    return true;
-                }
-                if ($os == 'unix') {
-                    break;
-                }
+
+        if (self::isUnc($path)) {
+            return $separator === self::DIRSEP_UNIX ? '/' : '\\';
         }
-        
-        return false;
+
+        if ($separator === self::DIRSEP_UNIX) {
+            return '/';
+        }
+        elseif ($separator === self::DIRSEP_WIN) {
+            return '\\';
+        }
+        elseif (is_string($separator)) {
+            return $separator;
+        }
+
+        return DIRECTORY_SEPARATOR;
     }
-    
+
     /**
      * Check if $path is absolute
      * 
      * Returns true if $path is absolute local or stream wrapped or UNC
      * 
-     * If $os is null, check for current OS
-     * If $os is true or 'all', check for all OS
+     * Parameter $os is similar to the isAbsoluteLocal()'s os parameter,
+     * and $strict param - to the isStreamWrapped()'s strict
      * 
-     * If $strict is true stream wrapper must be registered
-     *
-     * @param string $path
-     * @param string $os
-     * @param bool $strict
+     * By default absolute local will be checked for current local OS,
+     * and stream wrapped with non-strict param
+     * 
+     * @param  string $path
+     * @param  string|bool|null $os
+     * @param  bool $strict
      * @return bool 
      */    
     public static function isAbsolute($path, $os = null, $strict = false)
@@ -254,11 +266,140 @@ class Akt_Filesystem_Path
         
         return false;
     }
+        
+    /**
+     * Check if $path is local and absolute
+     * 
+     * If $os is null or false, check for current OS (default)
+     * If $os is 'any' or true, check for all known
+     * If $os equals to 'win' or 'unix', then for the corresponding system 
+     *
+     * @param  string $path
+     * @param  bool|string|null $os
+     * @return bool 
+     */
+    public static function isAbsoluteLocal($path, $os = null)
+    {
+        if ($os !== true && $os != 'any') {
+            if ($os === null || $os === false) {
+                $os = PHP_OS;
+            }
+            $os = strstr(strtolower($os), 'win') ? 'win' : 'unix';
+        }
+        
+        switch ($os)
+        {
+            default:
+            case 'win':
+                if (self::isAbsoluteWin($path)) {
+                    return true;
+                }
+                if ($os === 'win') {
+                    break;
+                }
+            
+            case 'unix':
+                if (self::isAbsoluteUnix($path)) {
+                    return true;
+                }
+                if ($os === 'unix') {
+                    break;
+                }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Check if $path is absolute local windows path
+     * 
+     * If $strict is true, path must contain volume drive letter,
+     * else paths with first slash character will be also treated as absolute 
+     * 
+     * @static
+     * @param  string $path
+     * @param  bool $strict
+     * @return bool
+     */
+    public static function isAbsoluteWin($path, $strict = true)
+    {
+        $path = strtr($path, '/\\', '\\\\');
+        
+        if (preg_match('#^[a-z]+?:(\\\\([^\\\\]|$)|$)#i', $path)) {
+            return true;
+        }
+        if (!$strict && preg_match('#^\\\\([^\\\\]|$)#i', $path)) {
+            return true;
+        }
+        
+        return false;
+    }
     
+    /**
+     * Get strict absolute local windows path
+     * 
+     * If $path is strictly absolute, i.e. contains volume drive letter, 
+     * then this path will be returned w/o any modification.
+     * 
+     * Else if path is absolute non-strictly, i.e. begins with slash,
+     * then path will be defined relative to the cwd's volume drive.
+     * 
+     * If path is relative, then it will be appended to the cwd
+     * 
+     * If $cwd is not string or is not strict absolute, 
+     * then cwd() function will be called to determine current working dir
+     * 
+     * @static
+     * @param  $path
+     * @param  string|null $cwd
+     * @return string|bool
+     */
+    public static function getAbsoluteWinPath($path, $cwd = null)
+    {
+        if (!is_string($path)) {
+            return false;
+        }
+        
+        if (self::isAbsoluteWin($path, true)) {
+            // Path is strict absolute
+            return $path;
+        }
+        
+        if (!is_string($cwd) || !self::isAbsoluteWin($cwd, true)) {
+            // We need strict absolute cwd
+            $cwd = getcwd();
+            if (!self::isAbsoluteWin($cwd, true)) {
+                return false;
+            }
+        }
+        $cwd = strtr($cwd, '/\\', '\\\\');
+        
+        if (self::isAbsoluteWin($path, false)) {
+            // Path is absolute, but not strict, get just drive letter from cwd
+            if (($pos = strpos($cwd, '\\')) !== false) {
+                $cwd = substr($cwd, 0, $pos);
+            }
+        }
+        
+        return rtrim($cwd, '\\') . '\\' . ltrim($path, '\\/');
+    }
+
+    /**
+     * Check if $path is absolute local unix path
+     *
+     * @static
+     * @param  string $path
+     * @return bool
+     */
+    public static function isAbsoluteUnix($path)
+    {
+        return substr($path, 0, 1) == '/';
+    }
+
     /**
      * Returns true if $path is correct UNC path
      *
-     * @param string $path
+     * @param  string $path
      * @return bool 
      */
     public static function isUnc($path)
@@ -274,17 +415,17 @@ class Akt_Filesystem_Path
      * 
      * If $strict is true stream wrapper must be registered
      *
-     * @param string $path
-     * @param bool $strict
+     * @param  string $path
+     * @param  bool $strict
      * @return bool 
      */
     public static function isStreamWrapped($path, $strict = false)
     {
-        $protocol = self::getStreamWrapperProtocol($path);
-        if (!$protocol) {
+        $scheme = self::getStreamWrapperScheme($path);
+        if (!$scheme) {
             return false;
         }
-        if ($strict && !in_array($protocol, stream_get_wrappers())) {
+        if ($strict && !in_array($scheme, stream_get_wrappers())) {
             return false;
         }
         return true;
@@ -293,12 +434,12 @@ class Akt_Filesystem_Path
     /**
      * Get stream wrapper protocol part
      *
-     * @param string $path 
+     * @param  string $path 
      * @return string|false
      */
-    public function getStreamWrapperProtocol($path)
+    public static function getStreamWrapperScheme($path)
     {
-        if (!preg_match("#^([^\:/]+?)\://#", $path, $m)) {
+        if (!preg_match("#^([^:/]+?)://#", $path, $m)) {
             return false;
         }
         return strtolower($m[1]);

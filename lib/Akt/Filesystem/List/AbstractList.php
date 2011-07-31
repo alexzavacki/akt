@@ -13,7 +13,7 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     const ROOT   = 2;
     
     /**
-     * @const List mode
+     * @const List modes
      */
     const DIRS_AND_FILES = 0;
     const FILES_ONLY     = 1;
@@ -26,18 +26,18 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     
     const ABSOLUTE = 0;
     const RELATIVE = 2;
-
-    /**
-     * List's base dir
-     * @var string
-     */
-    protected $_basedir;
     
     /**
      * List's mode
      * @var int
      */
     protected $_mode = self::DIRS_AND_FILES;
+
+    /**
+     * List's base dir
+     * @var string
+     */
+    protected $_basedir;
 
     /**
      * Pathname include filter
@@ -50,13 +50,19 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
      * @var array
      */
     protected $_exclude = array();
-    
+
     /**
      * List options
      * @var Akt_Options 
      */
     protected $_options;
 
+    /**
+     * Current working dir
+     * @var string
+     */
+    protected $_cwd;
+    
 
     /**
      * Constructor
@@ -69,8 +75,7 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     public function __construct($basedirOrInclude = self::PARENT, 
         $includeOrExclude = null, $excludeOrOptions = null, $options = null)
     {
-        if (is_int($basedirOrInclude) || is_string($basedirOrInclude) 
-            || $basedirOrInclude === null) 
+        if (is_int($basedirOrInclude) || is_string($basedirOrInclude) || $basedirOrInclude === null) 
         {
             $basedir = $basedirOrInclude;
             $include = $includeOrExclude;
@@ -160,7 +165,7 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
         
         $iterator = new AppendIterator();
         
-        $basedir = is_string($this->_basedir) ? $this->_basedir : getcwd();
+        $basedir = is_string($this->_basedir) ? $this->_basedir : $this->getCwd();
         $iterator->append($this->_getDirIterator($basedir));
         
         return $iterator;
@@ -315,8 +320,8 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
         
         foreach ($include as $entry) {
             if (is_string($entry) 
-                || ($entry instanceof Akt_Filesystem_Filter_FilterInterface))
-            {
+                || ($entry instanceof Akt_Filesystem_Filter_FilterInterface)
+            ) {
                 if (!in_array($entry, $this->_include, true)) {
                     $this->_include[] = $entry;
                 }
@@ -367,8 +372,8 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
         
         foreach ($exclude as $entry) {
             if (is_string($entry) 
-                || ($entry instanceof Akt_Filesystem_Filter_FilterInterface))
-            {
+                || ($entry instanceof Akt_Filesystem_Filter_FilterInterface)
+            ) {
                 if (!in_array($entry, $this->_exclude, true)) {
                     $this->_exclude[] = $entry;
                 }
@@ -411,18 +416,19 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     /**
      * Set options adapter
      *
-     * @param Akt_Options $options
-     * @return Akt_Filesystem_List_FilePack 
+     * @param  Akt_Options $options
+     * @param  bool $clone
+     * @return Akt_Filesystem_List_AbstractList 
      */
-    public function setOptions($options)     
+    public function setOptions($options, $clone = false)     
     {
         if (!$options instanceof Akt_Options) {
             throw new Akt_Exception('Options must be an instance of Akt_Options');
         }
-        $this->_options = $options;
+        $this->_options = $clone ? (clone $options) : $options;
         return $this;
     }
-
+    
     /**
      * @return Akt_Filesystem_List_AbstractList 
      */
@@ -448,6 +454,29 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     public function existing($value = true)
     {
         $this->options()->set('existing', (bool) $value);
+        return $this;
+    }
+
+    /**
+     * Get current working dir
+     * 
+     * @return string
+     */
+    public function getCwd()
+    {
+        $cwd = is_string($this->_cwd) ? $this->_cwd : getcwd();
+        return trim($cwd, '/\\');
+    }
+    
+    /**
+     * Set working dir
+     * 
+     * @param  string $cwd
+     * @return Akt_Filesystem_List_AbstractList
+     */
+    public function setCwd($cwd)
+    {
+        $this->_cwd = $cwd;
         return $this;
     }
 }

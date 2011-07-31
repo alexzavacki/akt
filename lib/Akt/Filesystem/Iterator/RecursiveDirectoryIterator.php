@@ -19,30 +19,28 @@ class Akt_Filesystem_Iterator_RecursiveDirectoryIterator
      * @param int $flags
      * @param string $subpath
      */
-    public function __construct($path, $flags = 0, $subpath = null)
+    public function __construct($path, $flags = null, $subpath = null)
     {
         $this->_subpath = $subpath;
         parent::__construct($path, $flags);
     }
     
     /**
-     * Return the current element
+     * Get current file's info as instance of Akt_Filesystem_Iterator_SplFileInfo
      * 
-     * Return information about current file as instance of Akt_Filesystem_Iterator_SplFileInfo
-     *
-     * @return Akt_Filesystem_Iterator_SplFileInfo
+     * @return SplFileInfo
      */
-    public function current()
+    public function getFileInfo()
     {
         return new Akt_Filesystem_Iterator_SplFileInfo(
-            parent::current()->getPathname(), $this->getSubPath(), $this->getSubPathname()
-        );
+            parent::getFileInfo()->getPathname(), $this->getSubPathname()
+        );        
     }
-    
+
     /**
      * Returns whether current file is a directory and not '.' or '..'
      *
-     * @param bool $allowLinks
+     * @param  bool $allowLinks
      * @return bool 
      */
     public function hasChildren($allowLinks = false) 
@@ -51,12 +49,10 @@ class Akt_Filesystem_Iterator_RecursiveDirectoryIterator
             return false;
         }
         
-        $path = parent::current()->getPathname();
+        $path = $this->getFileInfo()->getPathname();
         
-        if (!$allowLinks && !$this->hasFlag(self::FOLLOW_SYMLINKS)) {
-            if (is_link($path)) {
-                return false;
-            }
+        if (is_link($path) && !$allowLinks && !$this->hasFlag(self::FOLLOW_SYMLINKS)) {
+            return false;
         }
         
         return is_dir($path);
@@ -69,40 +65,34 @@ class Akt_Filesystem_Iterator_RecursiveDirectoryIterator
      */
     public function getChildren() 
     {
-        $path = parent::current()->getPathname();
+        $path = $this->getFileInfo()->getPathname();
         
-        $subpath = $this->getFile();
-        if (is_string($this->_subpath)) {
-            $subpath = $this->_subpath . $this->dirSeparator() . $subpath;
-        }
-        
-        // @todo: rewrite this with __clone()?
-        $subdir = new self($path, $this->_flags, $subpath);
-        $subdir->setUseReopen($this->_useReopen);
+        $subdir = new self($path, $this->_flags, $this->getSubPathname());
+        $subdir->setUseReopenForRewind($this->_useReopenForRewind);
         
         return $subdir;
     } 
     
     /**
-     * Get sub path
+     * Get current subpath
      *
      * @return string 
      */
     public function getSubPath() 
     {
-        return $this->_subpath !== null ? $this->_subpath : '';
+        return is_string($this->_subpath) ? $this->_subpath : '';
     }
     
     /**
-     * Get sub path and file name
+     * Get full subpath name (i.e. subpath including filename)
      * 
      * @return string
      */
     public function getSubPathname() 
     {
         $subPathName = $this->getFile();
-        if ($this->_subpath !== null) {
-            $subPathName = $this->_subpath . $this->dirSeparator() . $subPathName;
+        if (is_string($this->_subpath)) {
+            $subPathName = $this->_subpath . $this->getDirectorySeparator() . $subPathName;
         }
         return $subPathName;
     }

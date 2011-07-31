@@ -2,16 +2,9 @@
 
 /**
  * Extends SplFileInfo to support relative paths
- *
- * @author Fabien Potencier <fabien@symfony.com>
  */
 class Akt_Filesystem_Iterator_SplFileInfo extends SplFileInfo 
 {
-    /**
-     * @var string
-     */
-    protected $_relativePath;
-    
     /**
      * @var string
      */    
@@ -21,25 +14,13 @@ class Akt_Filesystem_Iterator_SplFileInfo extends SplFileInfo
     /**
      * Constructor
      *
-     * @param string $fileInfo         The file name
-     * @param string $relativePath     The relative path
+     * @param string $file             The file name
      * @param string $relativePathname The relative path name
      */
-    public function __construct($file, $relativePath = null, $relativePathname = null)
+    public function __construct($file, $relativePathname = null)
     {
         parent::__construct($file);
-        $this->_relativePath = $relativePath;
         $this->_relativePathname = $relativePathname;
-    }
-
-    /**
-     * Returns the relative path
-     *
-     * @return string
-     */
-    public function getRelativePath()
-    {
-        return $this->_relativePath;
     }
 
     /**
@@ -50,5 +31,18 @@ class Akt_Filesystem_Iterator_SplFileInfo extends SplFileInfo
     public function getRelativePathname()
     {
         return $this->_relativePathname;
+    }
+
+    /**
+     * Returns the relative path
+     *
+     * @return string
+     */
+    public function getRelativePath()
+    {
+        if (!is_string($this->_relativePathname) || $this->_relativePathname == '') {
+            return '';
+        }
+        return ($dirname = dirname($this->_relativePathname)) == '.' ? '' : $dirname;
     }
 }

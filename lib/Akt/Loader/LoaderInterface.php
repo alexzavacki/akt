@@ -8,11 +8,4 @@ interface Akt_Loader_LoaderInterface
      * @return string|false
      */
     public static function load($class);
-
-    /**
-     * Get file location by resource name
-     * @param string $class
-     * @return string
-     */
-    public static function getResourceFilename($class);
 }

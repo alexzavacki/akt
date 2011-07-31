@@ -24,6 +24,7 @@ class Akt_Filesystem_Filter_Filename_Glob
      * @author Fabien Potencier <fabien@symfony.com> PHP port
      * @author Richard Clamp <richardc@unixbeard.net> Perl version
      *
+     * @param  string $glob
      * @return string
      */
     public static function toRegex($glob)

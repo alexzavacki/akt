@@ -1,9 +1,5 @@
 <?php
 
-/** We need path and dir functions */
-require_once 'Akt/Filesystem/Path.php';
-require_once 'Akt/Filesystem/Dir.php';
-
 /**
  *
  */
@@ -44,12 +40,25 @@ class Akt_Filesystem_File
     /**
      * Check if file exists
      *
-     * @param string $path
+     * @param  string $path
+     * @param  bool $useIncludePath
      * @return bool
      */
-    public static function exists($path)
+    public static function exists($path, $useIncludePath = false)
     {
-        return is_file(realpath($path));
+        if (is_file($path)) {
+            return true;
+        }
+        
+        if ($useIncludePath) {
+            foreach (explode(PATH_SEPARATOR, get_include_path()) as $subpath) {
+                if (is_file($subpath . '/' . $path)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -78,8 +87,8 @@ class Akt_Filesystem_File
      *
      * If $trim is true, file content will be trimmed before check
      *
-     * @param string $path
-     * @prarm bool $trim
+     * @param  string $path
+     * @param  bool $trim
      * @return bool
      */
     public static function isEmpty($path, $trim = false)

@@ -43,21 +43,6 @@ class Akt_Filesystem_List_FilePack
     }
     
     /**
-     * @todo:
-     * $filelist = array(
-     *      'path/to/file',
-     *      'subdir' => array(
-     *          'path1',
-     *          'path2',
-     *          'subsubdir' => array(
-     *              'path1',
-     *              'path2'
-     *          )
-     *      )
-     * )
-     */
-
-    /**
      * Pack all source files
      * 
      * @return void
@@ -133,7 +118,7 @@ class Akt_Filesystem_List_FilePack
      * 
      * This method is calling for each list entry
      *
-     * @param string $content
+     * @param  string $content
      * @return string 
      */
     public function filter($content) { return $content; }
@@ -151,7 +136,7 @@ class Akt_Filesystem_List_FilePack
     /**
      * Set pack's filename
      *
-     * @param string $filename
+     * @param  string $filename
      * @return Akt_Filesystem_List_FilePack 
      */
     public function setFilename($filename)
@@ -173,7 +158,7 @@ class Akt_Filesystem_List_FilePack
     /**
      * Set source files list
      *
-     * @param Akt_Filesystem_List_FileList|array $filelist
+     * @param  Akt_Filesystem_List_FileList|array $filelist
      * @return Akt_Filesystem_List_FilePack 
      */
     public function setFilelist($filelist)
@@ -198,15 +183,16 @@ class Akt_Filesystem_List_FilePack
     /**
      * Set options adapter
      *
-     * @param Akt_Options $options
+     * @param  Akt_Options $options
+     * @param  bool $clone
      * @return Akt_Filesystem_List_FilePack 
      */
-    public function setOptions($options)     
+    public function setOptions($options, $clone = false)     
     {
         if (!$options instanceof Akt_Options) {
             throw new Akt_Exception('Options must be an instance of Akt_Options');
         }
-        $this->_options = $options;
+        $this->_options = $clone ? (clone $options) : $options;
         return $this;
     }
 
@@ -223,7 +209,7 @@ class Akt_Filesystem_List_FilePack
     /**
      * Set glue string
      *
-     * @param string $glue
+     * @param  string $glue
      * @return Akt_Filesystem_List_FilePack 
      */
     public function setGlue($glue)

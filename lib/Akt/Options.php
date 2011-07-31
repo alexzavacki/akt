@@ -28,6 +28,7 @@ class Akt_Options
      * Constructor.
      *
      * @param array $options 
+     * @param mixed $defaultKey
      */
     public function __construct($options = array(), $defaultKey = 0) 
     {
@@ -105,18 +106,25 @@ class Akt_Options
      * Set option value or array of values
      *
      * @param string|array|Akt_Options $option
-     * @param mixed $value
+     * @param mixed $valueOrOverwrite
      * @param bool $overwrite
      * @return Akt_Options
      */
-    public function set($option, $value = null, $overwrite = true)
+    public function set($option, $valueOrOverwrite = null, $overwrite = true)
     {
+        $isSingleOption = false;
+        
         if ($option instanceof self) {
             $option = $option->get();
         }
         elseif (!is_array($option)) {
-            $option = array($option => $value);
+            $option = array($option => $valueOrOverwrite);
+            $isSingleOption = true;
         }
+    
+        if ($isSingleOption && is_bool($valueOrOverwrite)) {
+            $overwrite = $valueOrOverwrite;
+        }            
 
         foreach ($option as $key => $value) {
             $key = $this->_name($key);
@@ -131,9 +139,8 @@ class Akt_Options
     /**
      * Check if option exists
      *
-     * @param string|null $name
-     * @param mixed $default
-     * @return mixed
+     * @param string $name
+     * @return bool
      */
     public function has($name)
     {

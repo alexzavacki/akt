@@ -8,6 +8,12 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
     /**
      * @const
      */
+    const CURRENT_AS_FILEINFO = 0;
+    const CURRENT_AS_PATHNAME = 32;
+    
+    const KEY_AS_PATHNAME = 0;    
+    const KEY_AS_FILEINFO = 16;
+    
     const FOLLOW_SYMLINKS = 512;
     const SKIP_DOTS       = 4096;
     const UNIX_PATHS      = 8192;
@@ -22,13 +28,13 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      * Iterator flags
      * @var int
      */
-    protected $_flags = 0;
+    protected $_flags = self::SKIP_DOTS;
     
     /**
      * Opened dir resource
      * @var resource
      */
-    protected $_resource;
+    protected $_dirHandle;
     
     /**
      * Current file name
@@ -46,10 +52,10 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      * Use dir reopening instead of rewinddir
      * @var bool
      */
-    protected $_useReopen = null;
+    protected $_useReopenForRewind = null;
     
     /**
-     * Directory separator for current path
+     * Directory separator for current path (for cache)
      * @var string
      */
     protected $_directorySeparator;
@@ -61,7 +67,7 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      * @param string $path
      * @param int $flags
      */
-    public function __construct($path, $flags = 0)
+    public function __construct($path, $flags = null)
     {
         if (is_numeric($flags)) {
             $this->_flags = (int) $flags;
@@ -94,8 +100,10 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      */
     protected function _open($path = null)
     {
+        // getDirectorySeparator() returns cached dirsep only for null as $path 
         $dirsep = $this->getDirectorySeparator($path);
         
+        // ... and now we can get current internal path, if $path is null
         if ($path === null) {
             $path = $this->_path;
         }
@@ -110,13 +118,13 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
             throw new Akt_Exception("Path '{$path}' is not directory");
         }
         
-        $this->_resource = opendir($path);
+        $this->_dirHandle = opendir($path);
         
-        if (!is_resource($this->_resource)) {
+        if (!is_resource($this->_dirHandle)) {
             throw new Akt_Exception("Path '{$path}' can't be read");
         }
 
-        return $this->_resource;
+        return $this->_dirHandle;
     }
 
     /**
@@ -126,10 +134,10 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      */
     protected function _close()
     {
-        if (is_resource($this->_resource)) {
-            closedir($this->_resource);
+        if (is_resource($this->_dirHandle)) {
+            closedir($this->_dirHandle);
         }
-        $this->_resource = null;
+        $this->_dirHandle = null;
     }
 
     /**
@@ -151,7 +159,7 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      */
     protected function _rewind()
     {
-        rewinddir($this->getResource());
+        rewinddir($this->getDirHandle());
     }
 
     /**
@@ -162,10 +170,9 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
     public function rewind()
     {
         // rewinddir (seeking) doesn't work for some stream wrappers (e.g. ssh2.sftp)
-        if (($this->_useReopen === null 
-                && Akt_Filesystem_Path::isStreamWrapped($this->_path)) 
-            || $this->_useReopen) 
-        {
+        if ($this->_useReopenForRewind === null && Akt_Filesystem_Path::isStreamWrapped($this->_path)
+            || $this->_useReopenForRewind
+        ) {
             $this->_reopen();
         }
         else {
@@ -201,37 +208,52 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
     /**
      * Return the current element
      * 
-     * Return information about current file as instance of SplFileInfo
+     * Depends on iterator flags. By default file info will be returned
      *
-     * @return SplFileInfo
+     * @return SplFileInfo|string
      */
     public function current()
     {
-        $path = $this->getPath() . $this->getDirectorySeparator() . $this->getFile();
-        return new SplFileInfo($path);
+        if ($this->hasFlag(self::CURRENT_AS_PATHNAME)) {
+            return $this->getPathname();
+        }
+        return $this->getFileInfo();
     }
     
     /**
      * Return the key of the current element
      * 
-     * Get current file position
-     *
-     * @return int 
+     * Depends on iterator flags. By default path name will be returned
+     * 
+     * @return string|SplFileInfo
      */
     public function key()
     {
-        return $this->_position;
+        if ($this->hasFlag(self::KEY_AS_FILEINFO)) {
+            return $this->getFileInfo();
+        }
+        return $this->getPathname();
     }
     
+    /**
+     * Get current file's info as instance of SplFileInfo
+     * 
+     * @return SplFileInfo
+     */
+    public function getFileInfo()
+    {
+        return new SplFileInfo($this->getPathname());
+    }
+
     /**
      * Get or create dir resource
      *
      * @return resource|null
      */
-    public function getResource()
+    public function getDirHandle()
     {
-        if (is_resource($this->_resource)) {
-            return $this->_resource;
+        if (is_resource($this->_dirHandle)) {
+            return $this->_dirHandle;
         }
         return $this->_open();
     }
@@ -256,11 +278,11 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      */
     protected function _getNextFile()
     {
-        $resource = $this->getResource();
+        $dirHandle = $this->getDirHandle();
         $skipDots = $this->hasFlag(self::SKIP_DOTS);
         
         do {
-            $this->_currentFile = readdir($resource);
+            $this->_currentFile = readdir($dirHandle);
         } 
         while ($skipDots && $this->isDot());
         
@@ -272,6 +294,7 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
     /**
      * Check if file is '.' or '..'
      * 
+     * @param  string $file
      * @return bool 
      */
     public function isDot($file = null)
@@ -285,37 +308,25 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
     /**
      * Get current directory separator
      * 
-     * Returns '/' if current path is stream wrapped
-     * Returns '\' if OS is Windows, path is local and no UNIX_PATHS in current flags
-     * In all other cases returns '/'
+     * See Akt_Filesystem_Path::getDirectoryPath() for detailed information
      *
+     * @param  string $path
      * @return string 
      */
     public function getDirectorySeparator($path = null)
     {
-        $isIteratorPath = $path === null;
+        $isIteratorInternalPath = $path === null;
         
-        if ($isIteratorPath) {
+        if ($isIteratorInternalPath) {
             if (is_string($this->_directorySeparator)) {
                 return $this->_directorySeparator;
             }            
             $path = $this->_path;
         }
         
-        if (Akt_Filesystem_Path::isStreamWrapped($path)) {
-            $dirsep = '/';
-        }
-        elseif (Akt_Filesystem_Path::isUnc($path)) {
-            $dirsep = $this->hasFlag(self::UNIX_PATHS) ? '/' : '\\';
-        }
-        elseif (strstr(PHP_OS, 'WIN') && !$this->hasFlag(self::UNIX_PATHS)) {
-            $dirsep = "\\";
-        }
-        else {
-            $dirsep = "/";
-        }
+        $dirsep = Akt_Filesystem_Path::getDirectorySeparator($path);
         
-        if ($isIteratorPath) {
+        if ($isIteratorInternalPath) {
             $this->_directorySeparator = $dirsep;
         }
         
@@ -323,10 +334,11 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
     }
     
     /**
+     * Get current directory separator
+     * 
      * Short alias of getDirectorySeparator()
      * 
-     * Get current directory separator
-
+     * @param  string $path
      * @return string 
      */
     public function dirSeparator($path = null)
@@ -343,7 +355,27 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
     {
         return $this->_path;
     }
-
+    
+    /**
+     * Get full path to current file
+     * 
+     * @return string
+     */
+    public function getPathname()
+    {
+        return $this->getPath() . $this->getDirectorySeparator() . $this->getFile();
+    }
+    
+    /**
+     * Get current iterator position
+     * 
+     * @return int
+     */
+    public function getPosition()
+    {
+        return $this->_position;
+    }
+    
     /**
      * Get current iterator flags
      *
@@ -382,9 +414,9 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      *
      * @return bool
      */
-    public function useReopen()     
+    public function useReopenForRewind()     
     {
-        return $this->_useReopen;
+        return $this->_useReopenForRewind;
     }
 
     /**
@@ -393,9 +425,9 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      * @param bool $useReopen
      * @return Akt_Filesystem_Iterator_DirectoryIterator 
      */
-    public function setUseReopen($useReopen)
+    public function setUseReopenForRewind($useReopen)
     {
-        $this->_useReopen = $useReopen !== null ? (bool) $useReopen : null;
+        $this->_useReopenForRewind = $useReopen !== null ? (bool) $useReopen : null;
         return $this;
     }
 }

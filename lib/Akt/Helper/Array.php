@@ -25,6 +25,7 @@ class Akt_Helper_Array
      * Flatten multi-dimensional array
      * 
      * @param array $array
+     * @param bool $unique
      * @return array
      */
     public static function flatten($array, $unique = false)
