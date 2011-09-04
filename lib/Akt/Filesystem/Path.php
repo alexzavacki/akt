@@ -12,6 +12,17 @@ class Akt_Filesystem_Path
     const DIRSEP_UNIX = 1;
     const DIRSEP_WIN  = 2;
     
+    /**
+     * @var string
+     */
+    protected static $_defaultDirectorySeparator = '/';
+    
+    /**
+     * UNC checkings enabled option
+     * @var bool
+     */
+    protected static $_uncEnabled = false;
+    
     
     /**
      * Filesystem path cleaning
@@ -52,7 +63,7 @@ class Akt_Filesystem_Path
             $path = $scheme . '://'
                 . ltrim(strstr(preg_replace('#[/\\\\]+#', '/', $path), ':/'), ':/');
         }
-        elseif (self::isUnc($path)) {
+        elseif (self::$_uncEnabled && self::isUnc($path)) {
             $path = str_repeat($dirsep, 2) 
                 . ltrim(preg_replace('#[/\\\\]+#', $dirsep, $path), $dirsep);
         }
@@ -89,7 +100,7 @@ class Akt_Filesystem_Path
                 $prefix .= array_shift($path) . $dirsep;
             }
         }
-        elseif (self::isUnc($path)) {
+        elseif (self::$_uncEnabled && self::isUnc($path)) {
             $path = explode($dirsep, ltrim($path, $dirsep));
             $prefix = str_repeat($dirsep, 2) . array_shift($path) . $dirsep;
         }
@@ -166,36 +177,6 @@ class Akt_Filesystem_Path
     }
 
     /**
-     * Unslash the path
-     *
-     * Left, right or both
-     * By default unslashes only right side
-     *
-     * @param string $path
-     * @param bool $left
-     * @param bool $right
-     * @param string|int|null $separator
-     * @return string
-     */
-    public static function unslash($path, $left = false, $right = true, $separator = null)
-    {
-        if ($path == '') {
-            return $path;
-        }
-
-        $dirsep = self::getDirectorySeparator($path, $separator);
-
-        if ($left) {
-            $path = ltrim($path, $dirsep);
-        }
-        if ($right) {
-            $path = rtrim($path, $dirsep);
-        }
-
-        return $path;
-    }
-
-    /**
      * Get directory separator depending on $path type
      *
      * 1. Stream wrapped paths - '/'
@@ -219,7 +200,7 @@ class Akt_Filesystem_Path
             return '/';
         }
 
-        if (self::isUnc($path)) {
+        if (self::$_uncEnabled && self::isUnc($path)) {
             return $separator === self::DIRSEP_UNIX ? '/' : '\\';
         }
 
@@ -237,30 +218,47 @@ class Akt_Filesystem_Path
     }
 
     /**
+     * Set path default directory separator
+     * 
+     * @param  string $separator
+     * @return void
+     */
+    public static function setDefaultDirectorySeparator($separator)
+    {
+        self::$_defaultDirectorySeparator = $separator;
+    }
+
+    /**
+     * Get path default directory separator
+     * 
+     * @return string
+     */
+    public static function getDefaultDirectorySeparator()
+    {
+        return self::$_defaultDirectorySeparator;
+    }
+
+    /**
      * Check if $path is absolute
      * 
      * Returns true if $path is absolute local or stream wrapped or UNC
      * 
-     * Parameter $os is similar to the isAbsoluteLocal()'s os parameter,
-     * and $strict param - to the isStreamWrapped()'s strict
-     * 
-     * By default absolute local will be checked for current local OS,
-     * and stream wrapped with non-strict param
+     * Parameter $os is similar to the isAbsoluteLocal()'s os parameter
+     * By default absolute local will be checked for any OS
      * 
      * @param  string $path
      * @param  string|bool|null $os
-     * @param  bool $strict
      * @return bool 
      */    
-    public static function isAbsolute($path, $os = null, $strict = false)
+    public static function isAbsolute($path, $os = 'any')
     {
-        if (self::isStreamWrapped($path, $strict)) {
+        if (self::isAbsoluteLocal($path, $os)) {
             return true;
         }
-        elseif (self::isUnc($path)) {
+        elseif (self::isStreamWrapped($path)) {
             return true;
         }
-        elseif (self::isAbsoluteLocal($path, $os)) {
+        elseif (self::$_uncEnabled && self::isUnc($path)) {
             return true;
         }
         
@@ -280,7 +278,7 @@ class Akt_Filesystem_Path
      */
     public static function isAbsoluteLocal($path, $os = null)
     {
-        if ($os !== true && $os != 'any') {
+        if ($os !== true && $os !== 'any') {
             if ($os === null || $os === false) {
                 $os = PHP_OS;
             }
@@ -313,22 +311,22 @@ class Akt_Filesystem_Path
     /**
      * Check if $path is absolute local windows path
      * 
-     * If $strict is true, path must contain volume drive letter,
-     * else paths with first slash character will be also treated as absolute 
+     * If $volumeStrict is true, path must contain volume drive letter,
+     * else if false - paths with first slash character will be also treated as absolute 
      * 
      * @static
      * @param  string $path
-     * @param  bool $strict
+     * @param  bool $volumeStrict
      * @return bool
      */
-    public static function isAbsoluteWin($path, $strict = true)
+    public static function isAbsoluteWin($path, $volumeStrict = true)
     {
         $path = strtr($path, '/\\', '\\\\');
         
         if (preg_match('#^[a-z]+?:(\\\\([^\\\\]|$)|$)#i', $path)) {
             return true;
         }
-        if (!$strict && preg_match('#^\\\\([^\\\\]|$)#i', $path)) {
+        if (!$volumeStrict && preg_match('#^\\\\([^\\\\]|$)#i', $path)) {
             return true;
         }
         
@@ -443,5 +441,36 @@ class Akt_Filesystem_Path
             return false;
         }
         return strtolower($m[1]);
+    }
+
+    /**
+     * Set UNC enabled option
+     * 
+     * @param  boolean $uncEnabled
+     * @return void
+     */
+    public static function setUncEnabled($uncEnabled)
+    {
+        self::$_uncEnabled = $uncEnabled;
+    }
+
+    /**
+     * Enable UNC
+     * 
+     * @return void
+     */
+    public static function enableUnc()
+    {
+        self::setUncEnabled(true);
+    }
+
+    /**
+     * Get UNC enabled option
+     * 
+     * @return boolean
+     */
+    public static function getUncEnabled()
+    {
+        return self::$_uncEnabled;
     }
 }

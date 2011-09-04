@@ -22,10 +22,8 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     /**
      * @const List options
      */
-    const EXISTING = 1;
-    
-    const ABSOLUTE = 0;
-    const RELATIVE = 2;
+    const RELATIVE = 1;
+    const EXISTING = 2;
     
     /**
      * List's mode
@@ -37,7 +35,7 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
      * List's base dir
      * @var string
      */
-    protected $_basedir;
+    protected $_basedir = self::PARENT;
 
     /**
      * Pathname include filter
@@ -56,13 +54,13 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
      * @var Akt_Options 
      */
     protected $_options;
-
-    /**
-     * Current working dir
-     * @var string
-     */
-    protected $_cwd;
     
+    /**
+     * 
+     * @var Akt_Options
+     */
+    protected $_customOptions;
+
 
     /**
      * Constructor
@@ -73,8 +71,8 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
      * @param array|int $options
      */
     public function __construct($basedirOrInclude = self::PARENT, 
-        $includeOrExclude = null, $excludeOrOptions = null, $options = null)
-    {
+        $includeOrExclude = null, $excludeOrOptions = null, $options = null
+    ) {
         if (is_int($basedirOrInclude) || is_string($basedirOrInclude) || $basedirOrInclude === null) 
         {
             $basedir = $basedirOrInclude;
@@ -120,8 +118,8 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
                 $flags = $options;
                 $options = array();
                 $flagmap = array(
-                    'existing' => self::EXISTING,
                     'relative' => self::RELATIVE,
+                    'existing' => self::EXISTING,
                 );
                 foreach ($flagmap as $flagKey => $flagValue) {
                     if (($flags & $flagValue) == $flagValue) {
@@ -136,14 +134,13 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
         }
         
         if (is_array($include)) {
-            $this->_include = array_merge($this->_include, $include);
+            $this->addInclude($include);
         }
-        
         if (is_array($exclude)) {
-            $this->_exclude = array_merge($this->_exclude, $exclude);
+            $this->addExclude($exclude);
         }
     }
-
+    
     /**
      * Returns an Iterator for the current configuration.
      *
@@ -153,102 +150,365 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
      */
     public function getIterator()
     {
-        /*
-        $includes = $this->getAllIncludes();
-        if (noscan($includes)) {
-            $iterator = new ArrayIterator($includes);
-            if ($this->options()->get('existing', false)) {
-                $iterator = new ExistingIterator($iterator);
+        if ($this->_customOptions instanceof Akt_Options) {
+            $oldOptions = $this->_options;
+            $this->_options = $this->_customOptions;
+        }
+        
+        try {
+            list($include, $exclude) = $this->getIncludeExclude();
+            
+            $it = $this->_createAppendIterator($include, $exclude);
+    
+            $it = new Akt_Filesystem_Iterator_Filter_CallbackFilterIterator($it, array(
+                array(new Akt_Filesystem_Filter_Accept_UniqueFilesFilter(), 'accept')
+            ));
+            
+            $relative = $this->getRelativeArray();
+            
+            if ($relative === null && $this->_isIncludeStatic($include)) {
+                $relative = array(true);
+            }
+            
+            if ($relative) {
+                $it = new Akt_Filesystem_Iterator_FormatIterator($it, array(
+                    new Akt_Filesystem_Filter_Format_RelativeFilter($relative, $this->getCwd())
+                ));
             }
         }
-        */
+        catch (Exception $e) {
+            if (isset($oldOptions)) {
+                $this->_options = $oldOptions;
+                $this->_customOptions = null;
+            }
+            throw $e;
+        }
         
-        $iterator = new AppendIterator();
+        if (isset($oldOptions)) {
+            $this->_options = $oldOptions;
+            $this->_customOptions = null;
+        }
         
-        $basedir = is_string($this->_basedir) ? $this->_basedir : $this->getCwd();
-        $iterator->append($this->_getDirIterator($basedir));
-        
-        return $iterator;
+        return $it;
     }
     
     /**
-     * Get iterators chain for specified directory
-     *
-     * @param string $dir
+     * Create list's iterator
+     * 
+     * @throws Akt_Exception
+     * @param  array $include
+     * @param  array $exclude
      * @return Iterator
      */
-    protected function _getDirIterator($dir)
+    protected function _createAppendIterator($include, $exclude)
     {
-        $flags = Akt_Filesystem_Iterator_RecursiveDirectoryIterator::SKIP_DOTS;
-
-        $iterator = new RecursiveIteratorIterator(
-            new Akt_Filesystem_Iterator_RecursiveDirectoryIterator($dir, $flags),
-            RecursiveIteratorIterator::SELF_FIRST
-        );
-
-        if ($this->_mode == self::FILES_ONLY) {
-            $iterator = new Akt_Filesystem_Filter_Iterator_FilesOnlyFilterIterator($iterator);
-        }
-        elseif ($this->_mode == self::DIRS_ONLY) {
-            $iterator = new Akt_Filesystem_Filter_Iterator_DirectoriesOnlyFilterIterator($iterator);
-        }
-
-        if ($this->_include) 
+        $appendIterator = new Akt_Filesystem_Iterator_Append_AppendIterator();
+        
+        $staticGlobs   = array();
+        $globIterators = array();
+        
+        foreach ($include as $entry) 
         {
-            $includeArray = array();
-            
-            foreach ($this->_include as $include) 
-            {
-                if (is_string($include)) {
-                    $include = new Akt_Filesystem_Filter_Filename_Glob($include);
-                }
-                elseif (!$include instanceof Akt_Filesystem_Filter_FilterInterface) {
-                    continue;
-                }
-                
-                $includeArray[] = $include;
+            if (!$entry instanceof Akt_Filesystem_Filter_Accept_Pathname_Glob) {
+                throw new Akt_Exception("Include list can contain only glob filters");
             }
-            
-            if ($includeArray) {
-                $iterator = new Akt_Filesystem_Filter_Iterator_IncludeFilterIterator($iterator, $includeArray);
-            }
-        }
-
-        if ($this->_exclude) 
-        {
-            $excludeArray = array();
-            
-            foreach ($this->_exclude as $exclude) 
-            {
-                if (is_string($exclude)) {
-                    $exclude = new Akt_Filesystem_Filter_Filename_Glob($exclude);
+            /** @var $entry Akt_Filesystem_Filter_Accept_Pathname_Glob */
+            if (Akt_Filesystem_Path_Glob::needScan($entry->getPattern())) {
+                if (count($staticGlobs)) {
+                    $globIterators[] = $this->_createGlobStaticIterator($staticGlobs);
+                    $staticGlobs = array();
                 }
-                elseif (!$exclude instanceof Akt_Filesystem_Filter_FilterInterface) {
-                    continue;
-                }
-                
-                $excludeArray[] = $exclude;
+                $globIterators[] = new Akt_Filesystem_Iterator_Filter_CallbackFilterIterator(
+                    $this->_createGlobRecursiveDirectoryIterator($entry),
+                    array(array($entry, 'accept'))
+                );
             }
-            
-            if ($excludeArray) {
-                $iterator = new Akt_Filesystem_Filter_Iterator_ExcludeFilterIterator($iterator, $excludeArray);
+            else {
+                $staticGlobs[] = $entry;
             }
         }
+        if (count($staticGlobs)) {
+            $globIterators[] = $this->_createGlobStaticIterator($staticGlobs);
+        }
+        
+        foreach ($globIterators as $iterator) {
+            $iterator = new Akt_Filesystem_Iterator_Filter_ExcludeFilterIterator($iterator, $exclude);
+            $appendIterator->appendTraversable($iterator);
+        }
 
-        return $iterator;
+        return $appendIterator;
     }
     
+    /**
+     * Create iterator for static glob pattern(s)
+     * 
+     * @param  array|Akt_Filesystem_Filter_Filename_Glob $glob
+     * @return Iterator
+     */
+    protected function _createGlobStaticIterator($glob)
+    {
+        $it = new Akt_Filesystem_Iterator_Glob_GlobStaticIterator(
+            $glob,
+            Akt_Filesystem_Iterator_Glob_GlobStaticIterator::CURRENT_AS_PATHNAME
+        );
+        
+        if ($this->options()->get('existing', false)) {
+            if ($this->_mode == self::FILES_ONLY) {
+                $it = new Akt_Filesystem_Iterator_Filter_FilesOnlyFilterIterator($it);
+            }
+            elseif ($this->_mode == self::DIRS_ONLY) {
+                $it = new Akt_Filesystem_Iterator_Filter_DirectoriesOnlyFilterIterator($it);
+            }
+        }
+        
+        return $it;
+    }
+
+    /*
+    $tree['/']['home']['user'][] = 'README';
+    $tree['/']['home']['user']['lib'][] = '.gitignore';
+    
+    $tree => array(
+        '/' => array(
+            'home' => array(
+                'user' => array(
+                    'README',
+                    'lib' => array(
+                        '.gitignore'
+                    )
+                )
+            )
+        ),
+        'c:/' => array(
+            // ...
+        ),
+        '\\server\' => array(
+            // ...
+        ),
+        'ssh2.sftp://' => array(
+            'Resource#37' => array(
+                'home' => array(
+                    // ...
+                )
+            )
+        )
+    );
+    */
+    
+    /**
+     * Create iterator for magic glob pattern
+     * 
+     * @param  string|Akt_Filesystem_Filter_Filename_Glob $glob
+     * @param  Akt_Filesystem_Cache_DirectoryTreeCache $directoryTreeCache
+     * @return Iterator
+     */
+    protected function _createGlobRecursiveDirectoryIterator($glob, $directoryTreeCache = null)
+    {
+        $flags = Akt_Filesystem_Iterator_RecursiveDirectoryIterator::SKIP_DOTS
+            | Akt_Filesystem_Iterator_RecursiveDirectoryIterator::CURRENT_AS_PATHNAME;
+
+        $it = new RecursiveIteratorIterator(
+            new Akt_Filesystem_Iterator_Glob_GlobRecursiveDirectoryIterator($glob, $flags),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+        
+        if ($this->_mode == self::FILES_ONLY) {
+            $it = new Akt_Filesystem_Iterator_Filter_FilesOnlyFilterIterator($it);
+        }
+        elseif ($this->_mode == self::DIRS_ONLY) {
+            $it = new Akt_Filesystem_Iterator_Filter_DirectoriesOnlyFilterIterator($it);
+        }
+        
+        return $it;
+    }
+
+    /**
+     * Get all include/exclude filters as flatten arrays
+     * 
+     * @return array
+     */
+    public function getIncludeExclude()
+    {
+        list($include, $exclude) = $this->_parseListIncludeExclude($this);
+        
+        if (!$include) {
+            $include = array(array(array($this->getBasedir()), '**/*'));
+        }
+        
+        $include = $this->_normalizeIncludeExclude($include);
+        $exclude = $this->_normalizeIncludeExclude($exclude);
+
+        return array($include, $exclude);
+    }
+
+    /**
+     * Parse (recursively) list's nested include/exclude filters 
+     * 
+     * Return as flatten arrays
+     * 
+     * @param  Akt_Filesystem_List_AbstractList $list
+     * @param  array $basedirStack
+     * @return array
+     */
+    protected function _parseListIncludeExclude($list, $basedirStack = array())
+    {
+        $includeList = array();
+        $excludeList = array();
+        
+        $basedirStack[] = $list->getBasedir();
+        
+        foreach ($list->getExclude() as $filter) {
+            $excludeList[] = array($basedirStack, $filter);
+        }
+        
+        foreach ($list->getInclude() as $filter) 
+        {
+            if ($filter instanceof self) {
+                /** @var $filter Akt_Filesystem_List_AbstractList */
+                list($incl, $excl) = $this->_parseListIncludeExclude($filter, $basedirStack);
+                if (is_array($incl)) {
+                    $includeList = array_merge($includeList, $incl);
+                }
+                if (is_array($excl)) {
+                    $excludeList = array_merge($excludeList, $excl);
+                }
+            }
+            else {
+                $includeList[] = array($basedirStack, $filter);
+            }
+        }
+        
+        return array($includeList, $excludeList);
+    }
+
+    /**
+     * Prepare include/exclude filters for iterators creation
+     * 
+     * @param  array $filterList
+     * @return array
+     */
+    protected function _normalizeIncludeExclude($filterList)
+    {
+        if (!is_array($filterList)) {
+            return array();
+        }
+        
+        $newFilterList = array();
+
+        foreach ($filterList as $entry) 
+        {
+            list($basedirStack, $filter) = $entry;
+            
+            if (is_string($filter)) {
+                $filter = new Akt_Filesystem_Filter_Accept_Pathname_Glob($filter);
+            }
+            
+            if ($filter instanceof Akt_Filesystem_Filter_Accept_Pathname_Glob)
+            {
+                $basedir  = $this->_getIncludeExcludeBasedir($basedirStack);
+                $expanded = Akt_Filesystem_Path_Glob::expand($filter->getPattern());
+                
+                foreach ($expanded as $pattern) 
+                {
+                    if ((Akt_Filesystem_Path::isStreamWrapped($pattern)
+                            || Akt_Filesystem_Path::isAbsoluteWin($pattern))
+                        && $basedir !== null
+                    ) {
+                        throw new Akt_Exception("FileList's pattern path can be absolute only with ROOT basedir");
+                    }
+                    $pattern = ltrim($pattern, '/\\');
+                    $newFilterList[] = new Akt_Filesystem_Filter_Accept_Pathname_Glob($pattern, $basedir);
+                }
+            }
+        }
+
+        return $newFilterList;
+    }
+    
+    /**
+     * Get basedir for include/exclude entry depends on stack
+     * 
+     * @param  array $basedirStack
+     * @return null|string
+     */
+    protected function _getIncludeExcludeBasedir($basedirStack)
+    {
+        if (!is_array($basedirStack)) {
+            return null;
+        }
+
+        $pathStack = array();
+        foreach ($basedirStack as $entry) 
+        {
+            if (($entry === self::PARENT || $entry === false) 
+                && is_array($pathStack) && !count($pathStack)
+            ) {
+                // top-level entry is parent, so using cwd as default
+                $pathStack[] = $this->getCwd();
+            }
+            elseif ($entry === self::ROOT || $entry === null) {
+                $pathStack = null;
+            }
+            elseif ($entry === self::CWD) {
+                $pathStack = array($this->getCwd());
+            }
+            elseif (is_string($entry)) 
+            {
+                if (Akt_Filesystem_Path::isAbsolute($entry, true)) {
+                    $pathStack = array($entry);
+                }
+                else {
+                    if (!is_array($pathStack)) {
+                        $pathStack = array();
+                    }
+                    elseif (!count($pathStack)) {
+                        $pathStack = array($this->getCwd());
+                    }
+                    $pathStack[] = $entry;
+                }
+            }
+        }
+
+        if (!is_array($pathStack) || !count($pathStack)) {
+            return null;
+        }
+
+        if (count($pathStack) == 1) {
+            return $pathStack[0];
+        }
+
+        $dirsep = Akt_Filesystem_Path::getDirectorySeparator($pathStack[0]);
+        return rtrim(implode($dirsep, $pathStack), '/\\');
+    }
+    
+    /**
+     * Check if all patterns in include list are static
+     * 
+     * @param  array $include
+     * @return bool
+     */
+    protected function _isIncludeStatic($include)
+    {
+        foreach ($include as $filter) {
+            /** @var $filter Akt_Filesystem_Filter_Accept_Pathname_Glob */
+            if (Akt_Filesystem_Path_Glob::needScan($filter->getPattern())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /**
      * Get all files list
      *
      * @return array 
      */
-    public function get()
+    public function toArray()
     {
         $result = array();
         
-        foreach ($this as $fileinfo) {
-            $result[] = $fileinfo->getPathname();
+        foreach ($this as $key => $entry) {
+            $result[$key] = $entry;
         }
         
         return $result;
@@ -261,7 +521,17 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
      */
     public function filter()
     {
-        return new Akt_Filesystem_List_ListFilter();
+        //return new Akt_Filesystem_List_ListFilter();
+    }
+
+    /**
+     * Get current mode
+     *
+     * @return int 
+     */
+    public function getMode()
+    {
+        return $this->_mode;
     }
 
     /**
@@ -287,16 +557,6 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     }
 
     /**
-     * Get current mode
-     *
-     * @return int 
-     */
-    public function getMode()
-    {
-        return $this->_mode;
-    }
-
-    /**
      * Get current include patterns
      *
      * @return array 
@@ -309,7 +569,7 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     /**
      * Add include filter/pattern
      *
-     * @param string|array|Akt_Filesystem_Filter_FilterInterface $include
+     * @param string|array|Akt_Filesystem_Filter_Accept_Pathname_Glob $include
      * @return Akt_Filesystem_List_AbstractList 
      */
     public function addInclude($include)
@@ -318,17 +578,17 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
             $include = array($include);
         }
         
-        foreach ($include as $entry) {
-            if (is_string($entry) 
-                || ($entry instanceof Akt_Filesystem_Filter_FilterInterface)
+        foreach ($include as $entry)
+        {
+            if (is_string($entry) || ($entry instanceof Akt_Filesystem_Filter_Accept_Pathname_Glob) 
+                || ($entry instanceof self)
             ) {
                 if (!in_array($entry, $this->_include, true)) {
                     $this->_include[] = $entry;
                 }
             }
             else {
-                throw new Akt_Exception("Include filter must be a string"
-                    . " or object that implements FilterInterface");
+                throw new Akt_Exception("Bad parameter");
             }
         }
         
@@ -361,7 +621,7 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     /**
      * Add exclude filter/pattern
      *
-     * @param string|array|Akt_Filesystem_Filter_FilterInterface $exclude
+     * @param  string|array|Akt_Filesystem_Filter_Accept_Pathname_Glob $exclude
      * @return Akt_Filesystem_List_AbstractList 
      */
     public function addExclude($exclude)
@@ -370,17 +630,15 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
             $exclude = array($exclude);
         }
         
-        foreach ($exclude as $entry) {
-            if (is_string($entry) 
-                || ($entry instanceof Akt_Filesystem_Filter_FilterInterface)
-            ) {
+        foreach ($exclude as $entry) 
+        {
+            if (is_string($entry) || ($entry instanceof Akt_Filesystem_Filter_Accept_Pathname_Glob)) {
                 if (!in_array($entry, $this->_exclude, true)) {
                     $this->_exclude[] = $entry;
                 }
             }
             else {
-                throw new Akt_Exception("Exclude filter must be a string"
-                    . " or object that implements FilterInterface");
+                throw new Akt_Exception("Bad parameter");
             }
         }
         
@@ -390,7 +648,7 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     /**
      * Set exclude patterns
      *
-     * @param array $exclude
+     * @param  array $exclude
      * @return Akt_Filesystem_List_AbstractList 
      */
     public function setExclude($exclude)
@@ -430,25 +688,144 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
     }
     
     /**
+     * Set custom options for iterator
+     * 
+     * @param  array|Akt_Options $options
+     * @param  bool $override
+     * @return Akt_Filesystem_List_AbstractList
+     */
+    public function withOptions($options, $override = true)
+    {
+        $customOptions = $override ? (clone $this->options()) : (new Akt_Options());
+        $this->_customOptions = $customOptions->merge($options);
+        return $this;
+    }
+    
+    /**
+     * Get current custom options
+     * 
+     * @return Akt_Options
+     */
+    public function getCustomOptions()
+    {
+        return $this->_customOptions;
+    }
+    
+    /**
+     * Clear custom options
+     * 
+     * @return Akt_Filesystem_List_AbstractList
+     */
+    public function clearCustomOptions()
+    {
+        $this->_customOptions = null;
+        return $this;
+    }
+
+    /**
+     * @param  bool|string|array $path
+     * @return Akt_Filesystem_List_AbstractList 
+     */
+    public function relative($path = true)
+    {
+        $relative = $this->options()->get('relative');
+        
+        if ($path === null || $path === false) {
+            if ($relative !== $path) {
+                $this->options()->set('relative', $path);
+            }
+            return $this;
+        }
+
+        if ($relative === true) {
+            $relative = array(true);
+        }
+        elseif (!is_array($relative)) {
+            $relative = array();
+        }
+        
+        if (!is_array($path)) {
+            $path = array($path);
+        }
+        
+        foreach ($path as $item) 
+        {
+            if (is_string($item)) {
+                $item = rtrim(Akt_Filesystem_Path::clean($item), '/\\');
+            }
+            elseif ($item !== true) {
+                continue;
+            }
+            
+            if (!in_array($item, $relative)) {
+                $relative[] = $item;
+            }
+        }
+        
+        $this->options()->set('relative', $relative);
+        
+        return $this;
+    }
+    
+    /**
+     * @param  bool|string|array $value
+     * @return Akt_Filesystem_List_AbstractList
+     */
+    public function setRelative($value)
+    {
+        $this->clearRelative()->relative($value);
+        return $this;
+    }
+    
+    /**
+     * Get relative paths as array
+     * 
+     * @return array|null|false
+     */
+    public function getRelativeArray()
+    {
+        $relative = $this->options()->get('relative');
+        
+        if ($relative === null || $relative === false) {
+            return $relative;
+        }
+        
+        if (!is_array($relative)) {
+            $relative = array($relative);
+        }
+        
+        return $relative;
+    }
+    
+    /**
+     * @return Akt_Filesystem_List_AbstractList
+     */
+    public function clearRelative()
+    {
+        $this->options()->set('relative', null);
+        return $this;
+    }
+
+    /**
+     * @return bool
+     */
+    public function isRelative()
+    {
+        $relative = $this->options()->get('relative');
+        return $relative !== null && $relative !== false;
+    }
+    
+    /**
      * @return Akt_Filesystem_List_AbstractList 
      */
     public function absolute()
     {
-        $this->options()->set('relative', false);
+        $this->relative(false);
         return $this;
     }
     
     /**
-     * @return Akt_Filesystem_List_AbstractList 
-     */
-    public function relative()
-    {
-        $this->options()->set('relative', true);
-        return $this;
-    }
-    
-    /**
-     * @param bool $value
+     * @param  bool $value
      * @return Akt_Filesystem_List_AbstractList 
      */
     public function existing($value = true)
@@ -464,8 +841,11 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
      */
     public function getCwd()
     {
-        $cwd = is_string($this->_cwd) ? $this->_cwd : getcwd();
-        return trim($cwd, '/\\');
+        $cwd = $this->options()->get('cwd');
+        if (!is_string($cwd)) {
+            $cwd = getcwd();
+        }
+        return is_string($cwd) ? trim($cwd, '/\\') : '';
     }
     
     /**
@@ -476,7 +856,7 @@ abstract class Akt_Filesystem_List_AbstractList implements IteratorAggregate
      */
     public function setCwd($cwd)
     {
-        $this->_cwd = $cwd;
+        $this->options()->set('cwd', $cwd);
         return $this;
     }
 }

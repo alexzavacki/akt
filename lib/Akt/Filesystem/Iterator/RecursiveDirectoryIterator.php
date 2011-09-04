@@ -24,21 +24,21 @@ class Akt_Filesystem_Iterator_RecursiveDirectoryIterator
         $this->_subpath = $subpath;
         parent::__construct($path, $flags);
     }
-    
+
     /**
-     * Get current file's info as instance of Akt_Filesystem_Iterator_SplFileInfo
+     * Create SplFileInfo object for current file
      * 
      * @return SplFileInfo
      */
-    public function getFileInfo()
+    protected function _createFileInfo()
     {
         return new Akt_Filesystem_Iterator_SplFileInfo(
-            parent::getFileInfo()->getPathname(), $this->getSubPathname()
-        );        
+            $this->getPathname(), $this->getSubPathname()
+        );   
     }
-
+    
     /**
-     * Returns whether current file is a directory and not '.' or '..'
+     * Returns true if current file is a directory and not '.' or '..'
      *
      * @param  bool $allowLinks
      * @return bool 
@@ -49,13 +49,19 @@ class Akt_Filesystem_Iterator_RecursiveDirectoryIterator
             return false;
         }
         
-        $path = $this->getFileInfo()->getPathname();
+        //$path = $this->getFileInfo()->getPathname();
+        $path = $this->getPathname();
         
-        if (is_link($path) && !$allowLinks && !$this->hasFlag(self::FOLLOW_SYMLINKS)) {
+        if (!is_dir($path)) {
             return false;
         }
         
-        return is_dir($path);
+        if (is_link($path) && !$allowLinks && !$this->hasFlag(self::FOLLOW_SYMLINKS)) {
+            // path is symlink and there is no follow link options
+            return false;
+        }
+        
+        return true;
     } 
     
     /**
@@ -65,7 +71,8 @@ class Akt_Filesystem_Iterator_RecursiveDirectoryIterator
      */
     public function getChildren() 
     {
-        $path = $this->getFileInfo()->getPathname();
+        //$path = $this->getFileInfo()->getPathname();
+        $path = $this->getPathname();
         
         $subdir = new self($path, $this->_flags, $this->getSubPathname());
         $subdir->setUseReopenForRewind($this->_useReopenForRewind);
@@ -91,9 +98,16 @@ class Akt_Filesystem_Iterator_RecursiveDirectoryIterator
     public function getSubPathname() 
     {
         $subPathName = $this->getFile();
-        if (is_string($this->_subpath)) {
-            $subPathName = $this->_subpath . $this->getDirectorySeparator() . $subPathName;
+        
+        if (is_string($this->_subpath)) 
+        {
+            $dirsep = is_string($this->_directorySeparator)
+                ? $this->_directorySeparator
+                : $this->getDirectorySeparator();
+            
+            $subPathName = $this->_subpath . $dirsep . $subPathName;
         }
+        
         return $subPathName;
     }
 }

@@ -45,7 +45,7 @@ class Akt_Filesystem_List_FilePack
     /**
      * Pack all source files
      * 
-     * @return void
+     * @return bool
      */
     public function pack()
     {
@@ -59,10 +59,12 @@ class Akt_Filesystem_List_FilePack
             $this->options()->get('dirchmod')
         );
         
-        $this->beforePack();
+        if (!$this->beforePack()) {
+            return false;
+        }
         
         if ($this->_filelist instanceof Akt_Filesystem_List_FileList) {
-            $filelist = $this->_filelist->get();
+            $filelist = $this->_filelist->toArray();
         }
         elseif (is_array($this->_filelist)) 
         {
@@ -104,14 +106,12 @@ class Akt_Filesystem_List_FilePack
             Akt_Filesystem_File::append($this->_filename, $content);
         }
 
-        $this->afterPack();
+        return $this->afterPack();
     }
     
-    /**
-     * Hooks
-     */
-    public function beforePack() {}
-    public function afterPack() {}
+    // Hooks
+    public function beforePack() { return true; }
+    public function afterPack() { return true; }
     
     /**
      * Filter content before appending
@@ -121,7 +121,10 @@ class Akt_Filesystem_List_FilePack
      * @param  string $content
      * @return string 
      */
-    public function filter($content) { return $content; }
+    public function filter($content) 
+    { 
+        return $content;
+    }
     
     /**
      * Get pack's filename

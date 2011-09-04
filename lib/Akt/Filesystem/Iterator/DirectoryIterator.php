@@ -8,11 +8,11 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
     /**
      * @const
      */
-    const CURRENT_AS_FILEINFO = 0;
-    const CURRENT_AS_PATHNAME = 32;
-    
     const KEY_AS_PATHNAME = 0;    
     const KEY_AS_FILEINFO = 16;
+    
+    const CURRENT_AS_FILEINFO = 0;
+    const CURRENT_AS_PATHNAME = 32;
     
     const FOLLOW_SYMLINKS = 512;
     const SKIP_DOTS       = 4096;
@@ -55,10 +55,22 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
     protected $_useReopenForRewind = null;
     
     /**
-     * Directory separator for current path (for cache)
+     * Defined and cached directory separator for current path
      * @var string
      */
     protected $_directorySeparator;
+    
+    /**
+     * Info for current file
+     * @var SplFileInfo
+     */
+    protected $_fileinfo;
+    
+    /**
+     * Pathname for current file
+     * @var string
+     */
+    protected $_pathname;
     
     
     /**
@@ -100,8 +112,10 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      */
     protected function _open($path = null)
     {
-        // getDirectorySeparator() returns cached dirsep only for null as $path 
-        $dirsep = $this->getDirectorySeparator($path);
+        // getDirectorySeparator() caches dirsep only for null as $path 
+        $dirsep = ($path === null && is_string($this->_directorySeparator))
+            ? $this->_directorySeparator
+            : $this->getDirectorySeparator($path);
         
         // ... and now we can get current internal path, if $path is null
         if ($path === null) {
@@ -214,7 +228,7 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      */
     public function current()
     {
-        if ($this->hasFlag(self::CURRENT_AS_PATHNAME)) {
+        if ($this->_flags & self::CURRENT_AS_PATHNAME) {
             return $this->getPathname();
         }
         return $this->getFileInfo();
@@ -229,22 +243,12 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      */
     public function key()
     {
-        if ($this->hasFlag(self::KEY_AS_FILEINFO)) {
+        if ($this->_flags & self::KEY_AS_FILEINFO) {
             return $this->getFileInfo();
         }
         return $this->getPathname();
     }
     
-    /**
-     * Get current file's info as instance of SplFileInfo
-     * 
-     * @return SplFileInfo
-     */
-    public function getFileInfo()
-    {
-        return new SplFileInfo($this->getPathname());
-    }
-
     /**
      * Get or create dir resource
      *
@@ -279,15 +283,18 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
     protected function _getNextFile()
     {
         $dirHandle = $this->getDirHandle();
-        $skipDots = $this->hasFlag(self::SKIP_DOTS);
+        $skipDots = $this->_flags & self::SKIP_DOTS;
         
         do {
             $this->_currentFile = readdir($dirHandle);
         } 
-        while ($skipDots && $this->isDot());
+        while ($skipDots && ($this->_currentFile == '.' || $this->_currentFile == '..'));
         
         $this->_position = $this->_position !== null ? $this->_position + 1 : 0;
-        
+
+        $this->_fileinfo = null;
+        $this->_pathname = null;
+                
         return $this->_currentFile;
     }
     
@@ -304,48 +311,7 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
         }
         return $file == '.' || $file == '..';
     }
-    
-    /**
-     * Get current directory separator
-     * 
-     * See Akt_Filesystem_Path::getDirectoryPath() for detailed information
-     *
-     * @param  string $path
-     * @return string 
-     */
-    public function getDirectorySeparator($path = null)
-    {
-        $isIteratorInternalPath = $path === null;
-        
-        if ($isIteratorInternalPath) {
-            if (is_string($this->_directorySeparator)) {
-                return $this->_directorySeparator;
-            }            
-            $path = $this->_path;
-        }
-        
-        $dirsep = Akt_Filesystem_Path::getDirectorySeparator($path);
-        
-        if ($isIteratorInternalPath) {
-            $this->_directorySeparator = $dirsep;
-        }
-        
-        return $dirsep;
-    }
-    
-    /**
-     * Get current directory separator
-     * 
-     * Short alias of getDirectorySeparator()
-     * 
-     * @param  string $path
-     * @return string 
-     */
-    public function dirSeparator($path = null)
-    {
-        return $this->getDirectorySeparator($path);
-    }
-    
+
     /**
      * Get current dir path
      *
@@ -363,7 +329,84 @@ class Akt_Filesystem_Iterator_DirectoryIterator implements Iterator
      */
     public function getPathname()
     {
-        return $this->getPath() . $this->getDirectorySeparator() . $this->getFile();
+        if (is_string($this->_pathname)) {
+            return $this->_pathname;
+        }
+        
+        $dirsep = is_string($this->_directorySeparator)
+            ? $this->_directorySeparator
+            : $this->getDirectorySeparator();
+        
+        return $this->_pathname = $this->_path . $dirsep . $this->getFile();
+    }
+
+    /**
+     * Get current file's info as instance of SplFileInfo
+     * 
+     * @return SplFileInfo
+     */
+    public function getFileInfo()
+    {
+        if ($this->_fileinfo instanceof SplFileInfo) {
+            return $this->_fileinfo;
+        }
+        return $this->_fileinfo = $this->_createFileInfo();
+    }
+    
+    /**
+     * Create SplFileInfo object for current file
+     * 
+     * @return SplFileInfo
+     */
+    protected function _createFileInfo()
+    {
+        return new SplFileInfo($this->getPathname());
+    }
+    
+    /**
+     * Get current directory separator
+     * 
+     * See Akt_Filesystem_Path::getDirectorySeparator() for detailed information
+     *
+     * @param  string $path
+     * @return string 
+     */
+    public function getDirectorySeparator($path = null)
+    {
+        $isInternalPath = $path === null;
+        
+        if ($isInternalPath) {
+            // dirsep may be already cached for internal path
+            if (is_string($this->_directorySeparator)) {
+                return $this->_directorySeparator;
+            }
+            $path = $this->_path;
+        }
+        
+        $dirsep = $this->hasFlag(self::UNIX_PATHS) 
+            ? Akt_Filesystem_Path::DIRSEP_UNIX
+            : null;
+        
+        $dirsep = Akt_Filesystem_Path::getDirectorySeparator($path, $dirsep);
+        
+        if ($isInternalPath) {
+            $this->_directorySeparator = $dirsep;
+        }
+        
+        return $dirsep;
+    }
+    
+    /**
+     * Get current directory separator
+     * 
+     * Short alias of getDirectorySeparator()
+     * 
+     * @param  string $path
+     * @return string 
+     */
+    public function dirSeparator($path = null)
+    {
+        return $this->getDirectorySeparator($path);
     }
     
     /**

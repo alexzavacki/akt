@@ -3,7 +3,7 @@
 /**
  * FilesOnlyFilterIterator only keeps files.
  */
-class Akt_Filesystem_Filter_Iterator_FilesOnlyFilterIterator extends FilterIterator
+class Akt_Filesystem_Iterator_Filter_FilesOnlyFilterIterator extends FilterIterator
 {
     /**
      * Filters the iterator value
@@ -12,6 +12,6 @@ class Akt_Filesystem_Filter_Iterator_FilesOnlyFilterIterator extends FilterItera
      */
     public function accept()
     {
-        return parent::current()->isFile();
+        return is_file($this->getInnerIterator()->getPathname());
     }
 }

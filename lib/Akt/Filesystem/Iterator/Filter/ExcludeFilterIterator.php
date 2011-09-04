@@ -3,7 +3,7 @@
 /**
  * ExcludeFilterIterator
  */
-class Akt_Filesystem_Filter_Iterator_ExcludeFilterIterator extends FilterIterator
+class Akt_Filesystem_Iterator_Filter_ExcludeFilterIterator extends FilterIterator
 {
     /**
      * Exclude filters
@@ -23,7 +23,7 @@ class Akt_Filesystem_Filter_Iterator_ExcludeFilterIterator extends FilterIterato
         if (!is_array($exclude)) {
             $exclude = array($exclude);
         }
-        $this->_exclude = $exclude;
+        $this->_exclude = array_merge($this->_exclude, $exclude);
         
         parent::__construct($iterator);
     }
@@ -37,12 +37,22 @@ class Akt_Filesystem_Filter_Iterator_ExcludeFilterIterator extends FilterIterato
     {
         foreach ($this->_exclude as $exclude) 
         {
-            if (!$exclude instanceof Akt_Filesystem_Filter_FilterInterface) {
-                throw new Akt_Exception("Exclude filter must be"
-                    . " instance of Akt_Filesystem_Filter_FilterInterface");
+            $file = $this->getInnerIterator()->current();
+            
+            if ($exclude instanceof Akt_Filesystem_Filter_Accept_AcceptFilter) {
+                /** @var $exclude Akt_Filesystem_Filter_Accept_AcceptFilter */
+                if ($exclude->accept($file)) {
+                    return false;
+                }
             }
-            if ($exclude->accept($this->current())) {
-                return false;
+            elseif (is_callable($exclude)) {
+                /** @var $exclude callback */
+                if (!call_user_func($exclude, $file)) {
+                    return false;
+                }
+            }
+            else {
+                throw new Akt_Exception("Invalid exclude filter");
             }
         }
         

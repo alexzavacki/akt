@@ -3,7 +3,7 @@
 /**
  * DirectoriesOnlyFilterIterator only keeps directories.
  */
-class Akt_Filesystem_Filter_Iterator_DirectoriesOnlyFilterIterator extends FilterIterator
+class Akt_Filesystem_Iterator_Filter_DirectoriesOnlyFilterIterator extends FilterIterator
 {
     /**
      * Filters the iterator value
@@ -12,6 +12,6 @@ class Akt_Filesystem_Filter_Iterator_DirectoriesOnlyFilterIterator extends Filte
      */
     public function accept()
     {
-        return parent::current()->isDir();
+        return is_dir($this->getInnerIterator()->getPathname());
     }
 }

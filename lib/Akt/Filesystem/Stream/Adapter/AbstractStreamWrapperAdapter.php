@@ -100,6 +100,11 @@ abstract class Akt_Filesystem_Stream_Adapter_AbstractStreamWrapperAdapter
      */
     public function chdir($dir)
     {
+        if ($dir === null) {
+            $this->_cwd = null;
+            return true;
+        }
+        
         $dir = $this->getStreamPath($dir);
 
         if (!is_string($dir) || !$this->isDir($dir)) {
@@ -113,23 +118,32 @@ abstract class Akt_Filesystem_Stream_Adapter_AbstractStreamWrapperAdapter
     /**
      * Create a directory (recursively by default)
      * 
-     * @param  string $path
+     * @param  string $paths
      * @param  int $chmod
      * @param  bool $recursive
      * @return bool
      */
-    public function mkdir($path, $chmod = 0777, $recursive = true)
+    public function mkdir($paths, $chmod = 0777, $recursive = true)
     {
-        $path = $this->getAdapterStreamPath($path);
+        $result = true;
+        $paths = $this->getFlattenPathsFromParam($paths, 'dir');
         
-        if (!is_string($path)) {
-            return false;
-        }
-        if ($this->isDir($path)) {
-            return true;
+        foreach ($paths as $path) 
+        {
+            $path = $this->getAdapterStreamPath($path);
+            
+            if (!is_string($path)) {
+                $result = false;
+                continue;
+            }
+            if (is_dir($path)) {
+                continue;
+            }
+            
+            $result = mkdir($path, $chmod, $recursive) && $result;
         }
         
-        return mkdir($path, $chmod, $recursive);
+        return $result;
     }
     
     /**
@@ -166,62 +180,39 @@ abstract class Akt_Filesystem_Stream_Adapter_AbstractStreamWrapperAdapter
      */
     public function download($source, $target, $overwrite = false)
     {
-        $source = $this->getAdapterStreamPath($source);
+        $isTargetDir = $this->_isTargetValidDir($target, false);
         
-        if (!is_string($source) || !$this->isFile($source) || !$this->isReadable($source)) {
-            return false;
+        if (!is_string($source) && !$isTargetDir) {
+            throw new Akt_Exception("To copy list of files target must be a directory");
         }
         
-        if (!is_string($target)) {
-            return false;
-        }
+        $result = true;
+        $source = $this->getFlattenPathsFromParam($source, 'file');
         
-        $isTargetDir = strtr(substr($target, -1), '\\', '/') == '/';
-        if ($isTargetDir) {
-            $target = rtrim($target, '\\/') . '/' . basename($source);
-        }
-        
-        if ($this->getAdapterStreamPath($target) == $source) {
-            return false;
+        foreach ($source as $key => $path)
+        {
+            if ($isTargetDir) {
+                $targetFilename = rtrim($target, '\\/') . '/';
+                $targetFilename .= Akt_Filesystem_Path::isAbsolute($path, 'any') 
+                    ? basename($path)
+                    : ltrim($path, '/\\');
+            }
+            else {
+                $targetFilename = $target;
+            }
+            
+            $sourceFilename = is_string($key) && Akt_Filesystem_Path::isAbsolute($key, 'any')
+                ? $key
+                : $path;
+            
+            $result = $this->_doCopy(
+                $this->getAdapterStreamPath($sourceFilename),
+                $targetFilename,
+                $overwrite
+            ) && $result;
         }
 
-        if (!$overwrite && file_exists($target)) {
-            return false;
-        }
-        
-        $targetDirname = dirname($target);
-        if (!is_dir($targetDirname)) {
-            mkdir($targetDirname, 0777, true);
-        }
-        
-        return copy($source, $target);
-        
-        /*
-        $targetHandle = fopen($target, 'wb');
-        if (!$targetHandle) {
-            return false;
-        }
-        
-        $sourceHandle = $this->fopen($source, 'rb');
-        if (!$sourceHandle) {
-            fclose($targetHandle);
-            return false;
-        }
-        
-        $filesize = (int) $this->filesize($source);
-        $bytesRead = 0;
-        
-        while (!feof($sourceHandle) && $bytesRead < $filesize) {
-            $chunk = fread($sourceHandle, 8192);
-            $bytesRead += strlen($chunk);
-            fwrite($targetHandle, $chunk);
-        }
-        
-        fclose($targetHandle);
-        fclose($sourceHandle);
-        
-        return true;
-        */
+        return $result;
     }
 
     /**
@@ -234,45 +225,54 @@ abstract class Akt_Filesystem_Stream_Adapter_AbstractStreamWrapperAdapter
      */
     public function upload($source, $target, $overwrite = false)
     {
-        if (!is_string($source)) {
-            return false;
+        $isTargetDir = $this->_isTargetValidDir($target);
+        
+        if (!is_string($source) && !$isTargetDir) {
+            throw new Akt_Exception("To copy list of files target must be a directory");
         }
         
-        if (!is_string($target)) {
-            return false;
+        if (is_string($source)) {
+            $source = array($source);
+        }
+        elseif ($source instanceof Akt_Filesystem_List_AbstractList) {
+            $source = $source->toArray();
+        }
+        elseif (!is_array($source)) {
+            throw new Akt_Exception("Path must be a string, FileList or an array of paths");
         }
         
-        $isTargetDir = strtr(substr($target, -1), '\\', '/') == '/';
-        if ($isTargetDir) {
-            $target = rtrim($target, '\\/') . '/' . basename($source);
-        }
+        $result = true;
         
-        $target = $this->getAdapterStreamPath($target);
-        
-        if (!is_string($target)) {
-            return false;
-        }
-        
-        if ($target == $this->getAdapterStreamPath($source)) {
-            return false;
+        foreach ($source as $key => $path)
+        {
+            if ($isTargetDir) {
+                $targetFilename = rtrim($target, '\\/') . '/';
+                $targetFilename .= Akt_Filesystem_Path::isAbsolute($path, 'any') 
+                    ? basename($path)
+                    : ltrim($path, '/\\');
+            }
+            else {
+                $targetFilename = $target;
+            }
+            
+            $sourceFilename = is_string($key) && Akt_Filesystem_Path::isAbsolute($key, 'any')
+                ? $key
+                : $path;
+            
+            $result = $this->_doCopy(
+                $sourceFilename,
+                $this->getAdapterStreamPath($targetFilename),
+                $overwrite
+            ) && $result;
         }
 
-        if (!$overwrite && $this->fileExists($target)) {
-            return false;
-        }
-        
-        $targetDirname = dirname($target);
-        if (!$this->isDir($targetDirname)) {
-            $this->mkdir($targetDirname);
-        }
-        
-        return copy($source, $target);
+        return $result;
     }
 
     /**
      * Copy a file
      * 
-     * MUST be used only with stream local files
+     * Can be used only with stream local files
      * For copying between different streams see download/upload
      * 
      * @param  string $source
@@ -282,37 +282,100 @@ abstract class Akt_Filesystem_Stream_Adapter_AbstractStreamWrapperAdapter
      */
     public function copy($source, $target, $overwrite = false)
     {
-        $source = $this->getAdapterStreamPath($source);
+        $isTargetDir = $this->_isTargetValidDir($target);
         
-        if (!is_string($source) || !$this->isFile($source)) {
+        if (!is_string($source) && !$isTargetDir) {
+            throw new Akt_Exception("To copy list of files target must be a directory");
+        }
+        
+        $result = true;
+        $source = $this->getFlattenPathsFromParam($source, 'file');
+        
+        foreach ($source as $key => $path)
+        {
+            if ($isTargetDir) {
+                $targetFilename = rtrim($target, '\\/') . '/';
+                $targetFilename .= Akt_Filesystem_Path::isAbsolute($path, 'any') 
+                    ? basename($path)
+                    : ltrim($path, '/\\');
+            }
+            else {
+                $targetFilename = $target;
+            }
+            
+            $sourceFilename = is_string($key) && Akt_Filesystem_Path::isAbsolute($key, 'any')
+                ? $key
+                : $path;
+            
+            $result = $this->_doCopy(
+                $this->getAdapterStreamPath($sourceFilename),
+                $this->getAdapterStreamPath($targetFilename),
+                $overwrite
+            ) && $result;
+        }
+
+        return $result;
+    }
+    
+    /**
+     * Check if passed target is dir and writable or string that ends with slash
+     * 
+     * @param  string $target
+     * @param  bool $wrapAdapterStreamPath
+     * @return bool
+     */
+    protected function _isTargetValidDir($target, $wrapAdapterStreamPath = true)
+    {
+        $isTargetDir = strtr(substr($target, -1), '\\', '/') == '/';
+        
+        if ($wrapAdapterStreamPath) {
+            // getAdapterStreamPath() also removes ending slashes
+            $target = $this->getAdapterStreamPath($target);
+        }
+        
+        if (is_dir($target)) {
+            return is_writable($target);
+        }
+
+        if ($isTargetDir && !is_file($target)) {
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Copy source file to target
+     * 
+     * @param  string $sourceStreamPath
+     * @param  string $targetStreamPath
+     * @param  bool $overwrite
+     * @return bool
+     */
+    protected function _doCopy($sourceStreamPath, $targetStreamPath, $overwrite = false)
+    {
+        if (!is_string($sourceStreamPath) || !is_file($sourceStreamPath)) {
             return false;
         }
 
-        $isTargetDir = strtr(substr($target, -1), '\\', '/') == '/';
-        if ($isTargetDir) {
-            $target = rtrim($target, '\\/') . '/' . basename($source);
-        }
-        
-        $target = $this->getAdapterStreamPath($target);
-        
-        if (!is_string($target)) {
+        if (!is_string($targetStreamPath)) {
             return false;
         }
         
-        if ($target == $source) {
+        if ($targetStreamPath == $sourceStreamPath) {
+            return true;
+        }
+
+        if (!$overwrite && file_exists($targetStreamPath)) {
             return false;
         }
         
-        if (!$overwrite && $this->fileExists($target)) {
-            return false;
+        $targetDirname = dirname($targetStreamPath);
+        if (!is_dir($targetDirname)) {
+            mkdir($targetDirname, 0777, true);
         }
         
-        $targetDirname = dirname($target);
-        if (!$this->isDir($targetDirname)) {
-            $this->mkdir($targetDirname);
-        }
-        
-        return copy($source, $target);
+        return copy($sourceStreamPath, $targetStreamPath);
     }
         
     /**
@@ -331,7 +394,7 @@ abstract class Akt_Filesystem_Stream_Adapter_AbstractStreamWrapperAdapter
             return false;
         }
         
-        if ($this->fileExists($target)) {
+        if (file_exists($target)) {
             return false;
         }
         
@@ -378,24 +441,24 @@ abstract class Akt_Filesystem_Stream_Adapter_AbstractStreamWrapperAdapter
             return false;
         }
         
-        if (!$this->fileExists($path) || $this->isLink($path)) {
+        if (!file_exists($path) || is_link($path)) {
             return false;
         }
 
-        if ($this->isDir($path)) 
+        if (is_dir($path)) 
         {
             foreach (scandir($path) as $entry) {
                 if ($entry != '.' && $entry != '..') {
                     $this->remove($path . '/' . $entry);
                 }
             }
-            $this->rmdir($path);
+            rmdir($path);
         }
-        elseif ($this->isFile($path)) {
-            return $this->unlink($path);
+        elseif (is_file($path)) {
+            return unlink($path);
         }
         
-        return !$this->fileExists($path);
+        return !file_exists($path);
     }
     
     /**
@@ -406,11 +469,13 @@ abstract class Akt_Filesystem_Stream_Adapter_AbstractStreamWrapperAdapter
      */    
     public function filesize($path)
     {
-        if (!$this->isFile($path)) {
+        $path = $this->getAdapterStreamPath($path);
+        
+        if (!is_string($path) || !is_file($path)) {
             return false;
         }
-        $path = $this->getAdapterStreamPath($path);
-        return is_string($path) ? sprintf("%u", filesize($path)) : false;        
+        
+        return sprintf("%u", filesize($path));
     }
         
     /**
@@ -438,7 +503,7 @@ abstract class Akt_Filesystem_Stream_Adapter_AbstractStreamWrapperAdapter
     {
         $path = $this->getAdapterStreamPath($path);
         
-        if (!is_string($path) || !$this->isFile($path) || !$this->isReadable($path)) {
+        if (!is_string($path) || !is_file($path) || !is_readable($path)) {
             return false;
         }
         
@@ -465,9 +530,8 @@ abstract class Akt_Filesystem_Stream_Adapter_AbstractStreamWrapperAdapter
         }
         
         $dirname = dirname($path);
-        
-        if (!$this->isDir($dirname)) {
-            $this->mkdir($dirname);
+        if (!is_dir($dirname)) {
+            mkdir($dirname, 0777, true);
         }
 
         if (($handle = fopen($path, $mode)) === false) {
@@ -674,5 +738,32 @@ abstract class Akt_Filesystem_Stream_Adapter_AbstractStreamWrapperAdapter
     public function removeAdapterPartFromPath($path)
     {
         return $path;
+    }
+    
+    /**
+     * Get flatten array of paths
+     * 
+     * @throws Akt_Exception
+     * @param  string|array|Akt_Filesystem_List_AbstractList $paths
+     * @param  string $type
+     * @return array
+     */
+    public function getFlattenPathsFromParam($paths, $type = 'file')
+    {
+        if (is_string($paths)) {
+            $paths = array($paths);
+        }
+        elseif ($paths instanceof Akt_Filesystem_List_AbstractList) {
+            /** @var $paths Akt_Filesystem_List_AbstractList */
+            $paths = $paths->withOptions(array(
+                'cwd' => $this->getAdapterStreamPath('.')
+            ))->toArray();
+        }
+        elseif (!is_array($paths)) {
+            $listClass = $type == 'dir' ? 'DirList' : 'FileList';
+            throw new Akt_Exception("Path must be a string, {$listClass} or an array of paths");
+        }
+        
+        return $paths;
     }
 }

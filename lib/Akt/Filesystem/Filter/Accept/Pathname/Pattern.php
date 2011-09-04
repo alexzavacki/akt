@@ -3,8 +3,8 @@
 /**
  * 
  */
-abstract class Akt_Filesystem_Filter_Filename_Pattern
-    implements Akt_Filesystem_Filter_FilterInterface
+abstract class Akt_Filesystem_Filter_Accept_Pathname_Pattern
+    extends Akt_Filesystem_Filter_Accept_Pathname_AbstractPathnameFilter
 {
     /**
      * Filter pattern
@@ -17,20 +17,28 @@ abstract class Akt_Filesystem_Filter_Filename_Pattern
      * Constructor.
      *
      * @param string $pattern 
+     * @param string $basedir
      */
-    public function __construct($pattern)
+    public function __construct($pattern, $basedir = null)
     {
         $this->_pattern = $pattern;
+        parent::__construct($basedir);
     }
     
     /**
+     * Get full pattern with prefixed basedir if it is set
      * 
-     * @param SplFileInfo $fileinfo
-     * @return string
+     * @return false|string
      */
-    public function getSubPathname($fileinfo)
+    public function getFullPattern()
     {
-        return $fileinfo->getRelativePathname();
+        $file = $this->_pattern;
+        
+        if (is_string($this->_basedir)) {
+            $file = rtrim($this->_basedir, '/\\') . "/$file";
+        }
+        
+        return $file;
     }
     
     /**
@@ -47,7 +55,7 @@ abstract class Akt_Filesystem_Filter_Filename_Pattern
      * Set filter pattern
      *
      * @param string $pattern
-     * @return Akt_Filesystem_Filter_Filename_Pattern 
+     * @return Akt_Filesystem_Filter_Accept_Pathname_Pattern 
      */
     public function setPattern($pattern)
     {

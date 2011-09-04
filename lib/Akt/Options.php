@@ -105,34 +105,46 @@ class Akt_Options
     /**
      * Set option value or array of values
      *
-     * @param string|array|Akt_Options $option
-     * @param mixed $valueOrOverwrite
-     * @param bool $overwrite
+     * @param  string|array|Akt_Options $options
+     * @param  mixed $valueOrOverwrite
+     * @param  bool $overwrite
      * @return Akt_Options
      */
-    public function set($option, $valueOrOverwrite = null, $overwrite = true)
+    public function set($options, $valueOrOverwrite = null, $overwrite = true)
     {
         $isSingleOption = false;
         
-        if ($option instanceof self) {
-            $option = $option->get();
+        if ($options instanceof self) {
+            $options = $options->get();
         }
-        elseif (!is_array($option)) {
-            $option = array($option => $valueOrOverwrite);
+        elseif (!is_array($options)) {
+            $options = array($options => $valueOrOverwrite);
             $isSingleOption = true;
         }
     
-        if ($isSingleOption && is_bool($valueOrOverwrite)) {
+        if (!$isSingleOption && is_bool($valueOrOverwrite)) {
             $overwrite = $valueOrOverwrite;
         }            
 
-        foreach ($option as $key => $value) {
-            $key = $this->_name($key);
+        foreach ($options as $key => $value) {
+            $key = $this->_key($key);
             if (!array_key_exists($key, $this->_options) || $overwrite) {
                 $this->_options[$key] = $value;
             }
         }
 
+        return $this;
+    }
+    
+    /**
+     * Merge options with overwrite
+     * 
+     * @param  string|array|Akt_Options $options
+     * @return Akt_Options
+     */
+    public function merge($options)
+    {
+        $this->set($options);
         return $this;
     }
 
@@ -144,7 +156,7 @@ class Akt_Options
      */
     public function has($name)
     {
-        $name = $this->_name($name);
+        $name = $this->_key($name);
         return array_key_exists($name, $this->_options);
     }
     
@@ -165,7 +177,7 @@ class Akt_Options
      * @param string $name
      * @return string
      */
-    protected function _name($name)
+    protected function _key($name)
     {
         return strtolower(trim((string) $name));
     }
