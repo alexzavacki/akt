@@ -32,7 +32,7 @@ class Akt_Loader_ClassAliasLoader extends Akt_Loader_AbstractLoader
         'FileList' => 'Akt_Filesystem_List_FileList',
         'FilePack' => 'Akt_Filesystem_List_FilePack',
         'FileStream' => 'Akt_Filesystem_Stream_FileStream',
-        'Shell' => 'Akt_Shell_Shell',
+        'FileSync' => 'Akt_Filesystem_Sync_FileSync',
     );
 
     /**

@@ -101,7 +101,7 @@ class Akt_Options
 
         return $default;
     }
-
+    
     /**
      * Set option value or array of values
      *
@@ -180,6 +180,14 @@ class Akt_Options
     protected function _key($name)
     {
         return strtolower(trim((string) $name));
+    }
+
+    /**
+     * @return mixed
+     */
+    public function toArray()
+    {
+        return $this->get(null);
     }
     
     /**
